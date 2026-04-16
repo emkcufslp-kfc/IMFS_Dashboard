@@ -85,7 +85,7 @@ class MarketScanner:
     def __init__(self, sectors_to_scan):
         self.sectors_to_scan = sectors_to_scan
     
-    @st.cache_data(ttl=3600)
+    
     def scan_for_undervalued_stocks(self, pe_threshold=15, pb_threshold=1.2, div_yield_min=0.02):
         """Scan market for undervalued stocks in selected sectors"""
         results = []
