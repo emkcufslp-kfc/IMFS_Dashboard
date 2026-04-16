@@ -75,7 +75,7 @@ df_hist = pd.DataFrame(historical_data)
 
 current_regime = "Mild Expansion with Overheat/Stagflation Tilt"
 current_bias = "Quality, Low Volatility, Free Cash Flow / Dividend Yield"
-current_sectors = ["Financials", "Utilities"]
+current_sectors = ["Finance", "Utilities"]
 
 # ====================== HELPER FUNCTIONS ======================
 
@@ -201,7 +201,7 @@ if page == "📊 Main Dashboard":
     st.info("""
     **Immediate Actions (April 2026):**
     - Rebalance 60-80% into **Quality/FCF/Dividend** tilt
-    - Focus on **Financials** and **Utilities** sectors
+    - Focus on **Finance** and **Utilities** sectors
     - Target 15-25% margin of safety
     - Use Dynamic Stock Scanner to find opportunities
     """)
