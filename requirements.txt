@@ -1,1 +1,5 @@
-streamlit==1.40.1npandas>=2.1.0nplotly>=5.18.0nyfinance>=0.2.30nnumpy>=1.26.0
+streamlit==1.40.1
+pandas>=2.1.0
+plotly>=5.18.0
+yfinance>=0.2.30
+numpy>=1.26.0
