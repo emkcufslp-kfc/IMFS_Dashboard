@@ -1,6 +1,6 @@
 # =====================================================
-# IMFS v2.7 – 機構級台股輪動儀表板
-# Carbon Pro 深色主題 — 修正 HTML 渲染問題 + 全面重設計
+# IMFS v2.8 – 機構級台股輪動儀表板
+# Midnight Slate 主題 — 高對比度 + 5步驟引導面板 + 掃描買進區
 # =====================================================
 
 import streamlit as st
@@ -12,86 +12,101 @@ from datetime import datetime, timedelta
 import numpy as np
 
 st.set_page_config(
-    page_title="IMFS v2.7",
+    page_title="IMFS v2.8",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ── Carbon Pro 色彩系統 ────────────────────────────────────────────────────────
-# BG:      #13151A  (最深背景)
-# SURFACE: #1D2126  (卡片/容器)
-# SURFACE2:#252B33  (次層)
-# BORDER:  #2F3A47  (邊框)
-# TEXT1:   #E8EDF2  (主文字)
-# TEXT2:   #8899AA  (次文字/標籤)
-# BLUE:    #4488FF  (強調/按鈕)
-# GREEN:   #00CC88  (正向/買進)
-# RED:     #FF4455  (警示/觀望)
-# AMBER:   #FFAA00  (持有/注意)
+# ── Midnight Slate 色彩系統 (高對比度) ────────────────────────────────────────
+# BG:      #111827  Tailwind gray-900
+# SURFACE: #1F2937  Tailwind gray-800  (+14 lightness vs bg — clearly distinct)
+# SURFACE2:#374151  Tailwind gray-700  (hover/secondary)
+# BORDER:  #4B5563  Tailwind gray-600  (very visible border)
+# TEXT1:   #F9FAFB  Tailwind gray-50   (near white)
+# TEXT2:   #9CA3AF  Tailwind gray-400  (muted label)
+# BLUE:    #60A5FA  Tailwind blue-400  (accent/primary)
+# GREEN:   #34D399  Tailwind emerald-400
+# RED:     #F87171  Tailwind red-400
+# AMBER:   #FBBF24  Tailwind amber-400
 # ─────────────────────────────────────────────────────────────────────────────
 
 CSS = """
 <style>
-/* ── 全域 ── */
-html, body, [class*="css"] {
+/* ── 全域基底 ── */
+html, body {
+    background-color: #111827 !important;
+    color: #F9FAFB !important;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
-                 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
-    background-color: #13151A;
-    color: #E8EDF2;
+                 'Noto Sans TC', 'Microsoft JhengHei', sans-serif !important;
 }
-.main, .block-container { background-color: #13151A !important; }
-.block-container { padding: 1.75rem 2.5rem 3rem !important; max-width: 1440px; }
+[class*="css"], .stApp, .main {
+    background-color: #111827 !important;
+}
+.block-container {
+    background-color: #111827 !important;
+    padding: 1.5rem 2rem 3rem !important;
+    max-width: 1440px;
+}
 
 /* ── 側邊欄 ── */
 [data-testid="stSidebar"] {
-    background-color: #0E1014 !important;
-    border-right: 1px solid #2F3A47 !important;
+    background-color: #0D1117 !important;
+    border-right: 2px solid #374151 !important;
 }
-section[data-testid="stSidebar"] > div { padding-top: 1rem; }
+[data-testid="stSidebar"] > div { padding-top: 0.5rem; }
 
-/* ── st.metric 全面覆寫 ── */
+/* ── st.metric 卡片 ── */
 [data-testid="metric-container"] {
-    background: #1D2126;
-    border: 1px solid #2F3A47;
-    border-radius: 10px;
-    padding: 1rem 1.2rem 0.9rem;
-    transition: border-color 0.15s ease;
+    background-color: #1F2937 !important;
+    border: 1px solid #4B5563 !important;
+    border-radius: 10px !important;
+    padding: 0.9rem 1.1rem !important;
 }
-[data-testid="metric-container"]:hover { border-color: #4488FF; }
+[data-testid="metric-container"]:hover {
+    border-color: #60A5FA !important;
+    background-color: #263040 !important;
+}
 [data-testid="stMetricLabel"] > div {
-    font-size: 0.7rem !important;
-    font-weight: 600 !important;
+    font-size: 0.68rem !important;
+    font-weight: 700 !important;
     text-transform: uppercase !important;
-    letter-spacing: 0.08em !important;
-    color: #8899AA !important;
+    letter-spacing: 0.09em !important;
+    color: #9CA3AF !important;
 }
 [data-testid="stMetricValue"] > div {
-    font-size: 1.3rem !important;
+    font-size: 1.25rem !important;
     font-weight: 700 !important;
-    color: #E8EDF2 !important;
-    line-height: 1.25 !important;
+    color: #F9FAFB !important;
+    line-height: 1.3 !important;
 }
-[data-testid="stMetricDelta"] > div { font-size: 0.78rem !important; }
+[data-testid="stMetricDelta"] > div {
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
+}
+
+/* ── 區塊標題 ── */
+h1 {
+    font-size: 1.5rem !important; font-weight: 700 !important;
+    color: #F9FAFB !important; letter-spacing: -0.02em;
+    margin-bottom: 0.15rem !important;
+}
+h2 { font-size: 1.05rem !important; font-weight: 600 !important; color: #9CA3AF !important; }
+h3 { font-size: 0.9rem !important; font-weight: 600 !important; color: #D1D5DB !important; }
+p  { color: #E5E7EB !important; }
 
 /* ── 分隔線 ── */
-hr { border: none; border-top: 1px solid #2F3A47 !important; margin: 1.5rem 0 !important; }
+hr { border: none; border-top: 1px solid #374151 !important; margin: 1.25rem 0 !important; }
 
-/* ── 頁面標題 ── */
-h1 { font-size: 1.6rem !important; font-weight: 700 !important;
-     color: #E8EDF2 !important; letter-spacing: -0.02em; margin-bottom: 0 !important; }
-h2 { font-size: 1.1rem !important; font-weight: 600 !important; color: #8899AA !important; }
-h3 { font-size: 0.95rem !important; font-weight: 600 !important; color: #C8D3DC !important; }
-
-/* ── 小節標題 ── */
+/* ── 小節標籤 ── */
 .sec-label {
-    font-size: 0.68rem;
+    font-size: 0.67rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: #8899AA;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid #2F3A47;
-    margin-bottom: 0.85rem;
+    color: #9CA3AF;
+    padding-bottom: 0.45rem;
+    border-bottom: 2px solid #374151;
+    margin-bottom: 0.8rem;
 }
 
 /* ── 訊號徽章 ── */
@@ -102,87 +117,188 @@ h3 { font-size: 0.95rem !important; font-weight: 600 !important; color: #C8D3DC 
     padding: 5px 14px;
     border-radius: 6px;
     font-size: 0.82rem;
-    font-weight: 600;
+    font-weight: 700;
     letter-spacing: 0.02em;
 }
-.badge-buy   { background:#052917; color:#00CC88; border:1px solid #00994C; }
-.badge-hold  { background:#2A1F00; color:#FFAA00; border:1px solid #CC8800; }
-.badge-avoid { background:#2A0A0D; color:#FF4455; border:1px solid #CC1122; }
+.badge-buy   { background:#064E3B; color:#34D399; border:1px solid #059669; }
+.badge-hold  { background:#451A03; color:#FBBF24; border:1px solid #B45309; }
+.badge-avoid { background:#450A0A; color:#F87171; border:1px solid #B91C1C; }
+
+/* ── 買進區徽章 ── */
+.buy-zone-yes {
+    background:#064E3B; color:#34D399; border:1px solid #059669;
+    padding:2px 8px; border-radius:5px; font-size:0.75rem; font-weight:700;
+}
+.buy-zone-no {
+    background:#1F2937; color:#9CA3AF; border:1px solid #4B5563;
+    padding:2px 8px; border-radius:5px; font-size:0.75rem; font-weight:600;
+}
+
+/* ── 步驟引導卡片 ── */
+.step-card {
+    background: #1F2937;
+    border: 1px solid #374151;
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
+}
+.step-card.active {
+    border-color: #60A5FA;
+    background: #1E3A5F;
+}
+.step-card.done {
+    border-color: #059669;
+    background: #052E16;
+}
+.step-num {
+    font-size: 0.6rem; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.12em; margin-bottom: 2px;
+}
+.step-title { font-size: 0.82rem; font-weight: 700; color: #F9FAFB; }
+.step-hint  { font-size: 0.7rem; color: #9CA3AF; margin-top: 2px; }
 
 /* ── 表格 ── */
-[data-testid="stDataFrame"] { border-radius: 8px; overflow: hidden; border: 1px solid #2F3A47 !important; }
-thead tr th { background-color: #1A1E24 !important; color: #8899AA !important;
-              font-size: 0.72rem !important; text-transform: uppercase; letter-spacing: 0.06em; }
-tbody tr td { background-color: #1D2126 !important; color: #C8D3DC !important;
-              font-size: 0.83rem !important; border-bottom: 1px solid #252B33 !important; }
-tbody tr:hover td { background-color: #252B33 !important; }
-
-/* ── 입력창 ── */
-[data-testid="stTextInput"] > div > div > input {
-    background: #1D2126 !important; border: 1px solid #2F3A47 !important;
-    color: #E8EDF2 !important; border-radius: 7px !important; font-size: 0.875rem;
+[data-testid="stDataFrame"] {
+    border: 1px solid #4B5563 !important;
+    border-radius: 8px !important;
+    overflow: hidden !important;
 }
-[data-testid="stTextInput"] > div > div > input:focus { border-color: #4488FF !important; }
-[data-baseweb="select"] > div { background: #1D2126 !important; border-color: #2F3A47 !important; }
-[data-baseweb="select"] * { color: #E8EDF2 !important; }
+thead tr th {
+    background-color: #1F2937 !important;
+    color: #9CA3AF !important;
+    font-size: 0.71rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid #4B5563 !important;
+}
+tbody tr td {
+    background-color: #161D2B !important;
+    color: #E5E7EB !important;
+    font-size: 0.83rem !important;
+    border-bottom: 1px solid #374151 !important;
+}
+tbody tr:hover td { background-color: #1F2937 !important; }
 
-/* ── 버튼 ── */
+/* ── 入力欄 ── */
+[data-testid="stTextInput"] > div > div > input {
+    background: #1F2937 !important;
+    border: 1px solid #4B5563 !important;
+    color: #F9FAFB !important;
+    border-radius: 7px !important;
+    font-size: 0.875rem;
+}
+[data-testid="stTextInput"] > div > div > input:focus { border-color: #60A5FA !important; }
+[data-baseweb="select"] > div {
+    background: #1F2937 !important;
+    border-color: #4B5563 !important;
+}
+[data-baseweb="select"] * { color: #F9FAFB !important; }
+[data-baseweb="select"] li { background: #1F2937 !important; }
+
+/* ── 按鈕 ── */
 button[kind="primary"] {
-    background: #4488FF !important; border: none !important;
-    border-radius: 7px !important; font-weight: 600 !important;
-    font-size: 0.875rem !important; color: #fff !important;
+    background: #2563EB !important;
+    border: none !important;
+    border-radius: 7px !important;
+    font-weight: 700 !important;
+    font-size: 0.875rem !important;
+    color: #fff !important;
     transition: background 0.15s;
 }
-button[kind="primary"]:hover { background: #2266DD !important; }
+button[kind="primary"]:hover { background: #1D4ED8 !important; }
 button[kind="secondary"] {
-    background: transparent !important; border: 1px solid #2F3A47 !important;
-    border-radius: 7px !important; color: #8899AA !important;
+    background: transparent !important;
+    border: 1px solid #4B5563 !important;
+    border-radius: 7px !important;
+    color: #9CA3AF !important;
 }
-button[kind="secondary"]:hover { border-color: #8899AA !important; color: #E8EDF2 !important; }
-
-/* ── Slider ── */
-[data-testid="stSlider"] { color: #8899AA; }
-
-/* ── Alert ── */
-[data-baseweb="notification"] { border-radius: 8px !important; background: #1D2126 !important; }
-.stAlert { border-radius: 8px; background: #1A1E24 !important; border-color: #2F3A47 !important; }
+button[kind="secondary"]:hover { border-color: #9CA3AF !important; color: #F9FAFB !important; }
 
 /* ── Expander ── */
-[data-testid="stExpander"] { background:#1D2126; border:1px solid #2F3A47 !important; border-radius:8px; }
-[data-testid="stExpander"] summary { color:#C8D3DC !important; font-size:0.85rem; }
+[data-testid="stExpander"] {
+    background: #1F2937 !important;
+    border: 1px solid #4B5563 !important;
+    border-radius: 8px !important;
+}
+[data-testid="stExpander"] summary { color: #E5E7EB !important; font-size: 0.85rem; }
 
-/* ── Tab ── */
-[data-baseweb="tab-list"] { background:#1D2126; border-radius:8px; padding:3px; gap:2px; border:1px solid #2F3A47; }
-[data-baseweb="tab"] { border-radius:6px !important; color:#8899AA !important; font-size:0.82rem !important; padding: 6px 14px !important; }
-[aria-selected="true"][data-baseweb="tab"] { background:#4488FF !important; color:#fff !important; }
+/* ── Tabs ── */
+[data-baseweb="tab-list"] {
+    background: #1F2937 !important;
+    border-radius: 8px; padding: 3px; gap: 2px;
+    border: 1px solid #4B5563;
+}
+[data-baseweb="tab"] {
+    border-radius: 6px !important;
+    color: #9CA3AF !important;
+    font-size: 0.82rem !important;
+    padding: 6px 14px !important;
+}
+[aria-selected="true"][data-baseweb="tab"] {
+    background: #2563EB !important;
+    color: #fff !important;
+}
 
-/* ── Selectbox label ── */
-label { color: #8899AA !important; font-size: 0.78rem !important; }
+/* ── info/warning/error boxes ── */
+[data-baseweb="notification"] {
+    background: #1F2937 !important;
+    border: 1px solid #4B5563 !important;
+    border-radius: 8px !important;
+}
+div[data-testid="stAlert"] {
+    background: #1F2937 !important;
+    border: 1px solid #4B5563 !important;
+    border-radius: 8px !important;
+    color: #E5E7EB !important;
+}
+
+/* ── 標籤/說明文字 ── */
+label { color: #9CA3AF !important; font-size: 0.78rem !important; }
+.stCaption, [data-testid="stCaptionContainer"] { color: #6B7280 !important; }
+
+/* ── Number input ── */
+[data-testid="stNumberInput"] input {
+    background: #1F2937 !important;
+    border: 1px solid #4B5563 !important;
+    color: #F9FAFB !important;
+    border-radius: 7px !important;
+}
+
+/* ── Multiselect ── */
+[data-baseweb="tag"] {
+    background: #2563EB !important;
+    color: #fff !important;
+}
+
+/* ── Radio ── */
+[data-testid="stRadio"] label { color: #E5E7EB !important; font-size: 0.85rem !important; }
+[data-testid="stRadio"] [data-checked="true"] label { color: #60A5FA !important; font-weight: 600 !important; }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
 # ── Plotly 共用主題 ───────────────────────────────────────────────────────────
 PT = dict(
-    plot_bgcolor="#1D2126", paper_bgcolor="#13151A",
-    font=dict(color="#8899AA", size=11),
-    xaxis=dict(gridcolor="#252B33", linecolor="#2F3A47", tickfont=dict(color="#8899AA")),
-    yaxis=dict(gridcolor="#252B33", linecolor="#2F3A47", tickfont=dict(color="#8899AA")),
+    plot_bgcolor="#1F2937", paper_bgcolor="#111827",
+    font=dict(color="#9CA3AF", size=11),
+    xaxis=dict(gridcolor="#374151", linecolor="#4B5563", tickfont=dict(color="#9CA3AF")),
+    yaxis=dict(gridcolor="#374151", linecolor="#4B5563", tickfont=dict(color="#9CA3AF")),
     margin=dict(t=36, b=24, l=8, r=8),
-    title=dict(font=dict(color="#C8D3DC", size=12)),
-    legend=dict(bgcolor="#1D2126", bordercolor="#2F3A47", font=dict(color="#8899AA")),
+    title=dict(font=dict(color="#E5E7EB", size=12)),
+    legend=dict(bgcolor="#1F2937", bordercolor="#4B5563", font=dict(color="#9CA3AF")),
 )
-C = ["#4488FF","#00CC88","#FFAA00","#FF4455","#AA88FF","#00AACC"]
+C = ["#60A5FA","#34D399","#FBBF24","#F87171","#A78BFA","#22D3EE"]
 
 # ====================== 設定 ======================
 class IMFS_Config:
-    REGIME_PENALTY  = 150
-    ERP             = 5.5
-    GEO_BUFFER      = 150
-    MOS             = 0.20
-    RF              = 0.015
+    REGIME_PENALTY  = 150   # bps，過熱期加罰
+    ERP             = 5.5   # 權益風險溢價 %
+    GEO_BUFFER      = 150   # 地緣緩衝 bps
+    MOS             = 0.20  # 安全邊際 20%
+    RF              = 0.015 # 無風險利率
     TAX_RATE        = 0.20
     TERMINAL_GROWTH = 0.02
+    FAIR_PE         = 15.0  # 快速估值基準 P/E（掃描用）
 
 # ====================== 台股標的 ======================
 TAIWAN_STOCK_UNIVERSE = {
@@ -233,6 +349,12 @@ df_hist = pd.DataFrame({
     '加權指數報酬_%': [11.0,10.0,12.0,11.5,9.0,8.5,7.5,7.0,12.0,11.5,6.5,6.5,22.0],
 })
 
+# ====================== Session 初始化 ======================
+if "watchlist" not in st.session_state: st.session_state["watchlist"] = []
+if "step_done" not in st.session_state: st.session_state["step_done"] = set()
+
+def mark_step(n: int): st.session_state["step_done"].add(n)
+
 # ====================== 工具函數 ======================
 def _overheat() -> bool:
     return any(k in current_regime for k in ("過熱","滯脹"))
@@ -243,10 +365,9 @@ def _norm_div(raw) -> float:
     return v if v > 1.0 else v * 100.0
 
 def _badge_html(sig: str) -> str:
-    dot = "●"
-    if "買進" in sig: cls,dot = "badge-buy","▲"
-    elif "持有" in sig: cls,dot = "badge-hold","◆"
-    else: cls,dot = "badge-avoid","▼"
+    if "買進" in sig: cls, dot = "badge-buy", "▲"
+    elif "持有" in sig: cls, dot = "badge-hold", "◆"
+    else: cls, dot = "badge-avoid", "▼"
     return f'<span class="badge {cls}">{dot} {sig}</span>'
 
 def _sec(text: str) -> str:
@@ -290,6 +411,44 @@ def _calc_ret(prices,weights):
     w=weights[:df.shape[1]]; w=w/w.sum()
     pr=(df.pct_change().fillna(0)*w).sum(axis=1)
     return (1+pr).cumprod()-1, pr
+
+
+# ====================== 5步驟引導面板 ======================
+def render_step_guide(active_step: int):
+    done = st.session_state["step_done"]
+    steps = [
+        (1, "景氣確認",  "主儀表板 → 景氣狀態 + 偏好板塊"),
+        (2, "掃描候選",  "動態掃描 → 篩選低估值 + 確認買進區"),
+        (3, "深度估值",  "選股估值 → DCF + MOS 安全邊際"),
+        (4, "法醫篩選",  "Piotroski ≥ 3，無 Beneish 警示"),
+        (5, "買進判斷",  "股價 ≤ MOS + 財務健全 + 景氣符合"),
+    ]
+    st.markdown(_sec("📋 5步驟投資流程"), unsafe_allow_html=True)
+    for n, title, hint in steps:
+        is_done   = n in done
+        is_active = n == active_step
+        card_cls  = "step-card done" if is_done else ("step-card active" if is_active else "step-card")
+        num_color = "#34D399" if is_done else ("#60A5FA" if is_active else "#4B5563")
+        icon      = "✅" if is_done else ("▶" if is_active else f"  {n}")
+        st.markdown(f"""
+<div class="{card_cls}">
+  <div class="step-num" style="color:{num_color};">步驟 {n}</div>
+  <div class="step-title">{icon} {title}</div>
+  <div class="step-hint">{hint}</div>
+</div>""", unsafe_allow_html=True)
+
+    # 進度條
+    total_done = len([n for n,*_ in steps if n in done or n == active_step])
+    pct = int(total_done / len(steps) * 100)
+    st.markdown(f"""
+<div style="margin-top:0.5rem;">
+  <div style="font-size:0.65rem;color:#9CA3AF;margin-bottom:4px;">整體進度 {pct}%</div>
+  <div style="background:#374151;border-radius:4px;height:6px;">
+    <div style="width:{pct}%;background:#60A5FA;border-radius:4px;height:6px;
+                transition:width 0.3s ease;"></div>
+  </div>
+</div>""", unsafe_allow_html=True)
+
 
 # ====================== 估值引擎 ======================
 def run_valuation(ticker, company, sector):
@@ -342,98 +501,104 @@ def run_valuation(ticker, company, sector):
     dy =_norm_div(info.get('dividendYield'))
     pf =sum([roe>0,roa>0,ocf>0,ocf>ni_i,de<100,cr>1,float(info.get('earningsGrowth') or 0)>0])
 
-    # Header
+    # 步驟 3 完成（估值執行）
+    mark_step(3)
+    if pf>=3 and (ni_i-ocf)/max(abs(ni_i),1)<=0.5: mark_step(4)
+    if price>0 and price<=mos: mark_step(5)
+
+    # ── Header ──
     fit = sector in current_sectors
     st.markdown(f"""
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
-      <span style="font-size:1.35rem;font-weight:700;color:#E8EDF2;">{ticker} — {company}</span>
-      <span style="font-size:0.7rem;font-weight:600;background:#252B33;color:#8899AA;
-                   border:1px solid #2F3A47;border-radius:5px;padding:2px 9px;">{sector}</span>
-      <span style="font-size:0.7rem;font-weight:600;
-                   background:{'#052917' if fit else '#2A0A0D'};
-                   color:{'#00CC88' if fit else '#FF4455'};
-                   border:1px solid {'#009944' if fit else '#CC1122'};
-                   border-radius:5px;padding:2px 9px;">
-        {'✓ 景氣符合' if fit else '✗ 景氣不符'}
-      </span>
-    </div>
-    """, unsafe_allow_html=True)
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
+  <span style="font-size:1.3rem;font-weight:700;color:#F9FAFB;">{ticker} — {company}</span>
+  <span style="font-size:0.68rem;font-weight:600;background:#374151;color:#9CA3AF;
+               border:1px solid #4B5563;border-radius:5px;padding:2px 9px;">{sector}</span>
+  <span style="font-size:0.68rem;font-weight:700;
+               background:{'#064E3B' if fit else '#450A0A'};
+               color:{'#34D399' if fit else '#F87171'};
+               border:1px solid {'#059669' if fit else '#B91C1C'};
+               border-radius:5px;padding:2px 9px;">
+    {'✓ 景氣符合' if fit else '✗ 景氣不符'}
+  </span>
+</div>
+""", unsafe_allow_html=True)
     st.markdown(_badge_html(sig), unsafe_allow_html=True)
     st.markdown("---")
 
-    # KPI 列 — 使用 st.metric（無 HTML 渲染問題）
+    # ── KPI 列 ──
     c1,c2,c3,c4,c5,c6 = st.columns(6)
     c1.metric("目前股價",        f"NT${price:,.1f}" if price else "—")
     c2.metric("內在價值（DCF）", f"NT${iv:,.1f}"    if iv else "—")
     c3.metric("安全邊際價",      f"NT${mos:,.1f}"   if mos else "—", "-20%")
     c4.metric("距內在價值",      f"{up:+.1f}%"      if price else "—",
-              delta_color="normal" if up>0 else "inverse")
+              delta_color="normal" if up<0 else "inverse")
     c5.metric("WACC",            f"{wacc*100:.2f}%")
     c6.metric("股息殖利率",      f"{dy:.2f}%")
 
     st.markdown("---")
 
-    # WACC & DCF 圖
+    # ── WACC & DCF 圖 ──
     l,r = st.columns(2)
     with l:
         st.markdown(_sec("WACC 拆解"), unsafe_allow_html=True)
         wdf=pd.DataFrame({"組成":["無風險利率","Beta×ERP","地緣緩衝","景氣懲罰","WACC"],
-                           "%":[rf*100,beta*IMFS_Config.ERP,IMFS_Config.GEO_BUFFER/100,
-                                IMFS_Config.REGIME_PENALTY/100 if _overheat() else 0,wacc*100]})
-        fw=px.bar(wdf,x="組成",y="%",text_auto=".2f",color_discrete_sequence=["#4488FF"])
-        fw.update_traces(textfont_color="#E8EDF2",textposition="outside",marker_line_width=0)
-        fw.update_layout(**PT,height=270,showlegend=False)
+                          "%":[rf*100,beta*IMFS_Config.ERP,IMFS_Config.GEO_BUFFER/100,
+                               IMFS_Config.REGIME_PENALTY/100 if _overheat() else 0,wacc*100]})
+        fw=px.bar(wdf,x="組成",y="%",text_auto=".2f",color_discrete_sequence=["#60A5FA"])
+        fw.update_traces(textfont_color="#F9FAFB",textposition="outside",marker_line_width=0)
+        fw.update_layout(**PT,height=260,showlegend=False)
         st.plotly_chart(fw,use_container_width=True)
 
     with r:
         st.markdown(_sec("DCF 估值拆解"), unsafe_allow_html=True)
         ddf=pd.DataFrame({"項目":["5年現金流","永續價值","內在價值","安全邊際價"],
-                           "NT$":[pv5,tvp,iv,mos]})
+                          "NT$":[pv5,tvp,iv,mos]})
         fd=px.bar(ddf,x="項目",y="NT$",text_auto=".1f",color="項目",
-                  color_discrete_sequence=["#1E3A5F","#2563EB","#4488FF","#FFAA00"])
+                  color_discrete_sequence=["#1E3A5F","#2563EB","#60A5FA","#FBBF24"])
         if price:
-            fd.add_hline(y=price,line_dash="dot",line_color="#FF4455",line_width=1.5,
+            fd.add_hline(y=price,line_dash="dot",line_color="#F87171",line_width=1.5,
                          annotation_text=f"現價 {price:.0f}",
-                         annotation_font_color="#FF4455",annotation_bgcolor="#2A0A0D")
-        fd.update_traces(textfont_color="#E8EDF2",marker_line_width=0)
-        fd.update_layout(**PT,height=270,showlegend=False)
+                         annotation_font_color="#F87171",annotation_bgcolor="#450A0A")
+        fd.update_traces(textfont_color="#F9FAFB",marker_line_width=0)
+        fd.update_layout(**PT,height=260,showlegend=False)
         st.plotly_chart(fd,use_container_width=True)
 
-    # 業主盈餘
+    # ── 業主盈餘 ──
     st.markdown(_sec("業主盈餘（Owner Earnings = 淨利 ＋ 折舊攤銷 － 資本支出）"), unsafe_allow_html=True)
     e1,e2,e3,e4 = st.columns(4)
     if not cf.empty:
-        e1.metric("淨利",        f"NT${ni/1e9:.2f}B")
-        e2.metric("＋折舊攤銷",  f"NT${da/1e9:.2f}B")
-        e3.metric("－資本支出",  f"NT${cx/1e9:.2f}B")
-        e4.metric("＝業主盈餘",  f"NT${oe/1e9:.2f}B")
+        e1.metric("淨利",       f"NT${ni/1e9:.2f}B")
+        e2.metric("＋折舊攤銷", f"NT${da/1e9:.2f}B")
+        e3.metric("－資本支出", f"NT${cx/1e9:.2f}B")
+        e4.metric("＝業主盈餘", f"NT${oe/1e9:.2f}B")
     else:
         e1.metric("自由現金流（替代）", f"NT${oe/1e9:.2f}B")
         st.caption("現金流量表資料不足，以自由現金流替代")
 
     st.markdown("---")
 
-    # 法醫評分
+    # ── 法醫評分 ──
     st.markdown(_sec("財務健全度（法醫會計）"), unsafe_allow_html=True)
     f1,f2,f3 = st.columns(3)
     pfl = "強健" if pf>=5 else "普通" if pf>=3 else "偏弱"
     f1.metric("Piotroski F-Score",  f"{pf}/7 — {pfl}")
-    f2.metric("Beneish 應計項目",   "⚠️ 疑似虛增" if (ni_i-ocf)/max(abs(ni_i),1)>0.5 else "✅ 正常")
+    accrual_ok = (ni_i-ocf)/max(abs(ni_i),1)<=0.5
+    f2.metric("Beneish 應計項目",   "✅ 正常" if accrual_ok else "⚠️ 疑似虛增")
     z=roe*2+cr*0.5+pb*0.3
     f3.metric("Altman Z（代理）",   f"{'⚠️ 危機' if z<1.5 else '🟡 灰色' if z<3 else '✅ 安全'} ({z:.1f})")
 
     st.markdown("")
     st.dataframe(pd.DataFrame({
-        "指標":["ROE","ROA","負債／權益","流動比率","P/B","股息殖利率"],
-        "數值":[f"{roe*100:.1f}%" if roe else "—", f"{roa*100:.1f}%" if roa else "—",
-                f"{de:.1f}%"     if de   else "—", f"{cr:.2f}"       if cr   else "—",
-                f"{pb:.2f}"      if pb   else "—", f"{dy:.2f}%"],
-        "說明":["股東權益報酬率","資產報酬率","財務槓桿水準","短期償債能力","股價淨值比","年化股息殖利率"],
+        "指標": ["ROE","ROA","負債／權益","流動比率","P/B","股息殖利率"],
+        "數值": [f"{roe*100:.1f}%" if roe else "—", f"{roa*100:.1f}%" if roa else "—",
+                 f"{de:.1f}%"     if de   else "—", f"{cr:.2f}"       if cr   else "—",
+                 f"{pb:.2f}"      if pb   else "—", f"{dy:.2f}%"],
+        "說明": ["股東權益報酬率","資產報酬率","財務槓桿水準","短期償債能力","股價淨值比","年化股息殖利率"],
     }), use_container_width=True, hide_index=True)
 
     st.markdown("---")
     if st.button("➕ 加入觀察清單", type="secondary"):
-        wl=st.session_state.get("watchlist",[])
+        wl=st.session_state["watchlist"]
         e={"代號":ticker,"公司":company,"板塊":sector,"股價":price,
            "內在價值":round(iv,1),"MOS價":round(mos,1),
            "訊號":sig,"Piotroski":f"{pf}/7","殖利率%":f"{dy:.2f}%"}
@@ -448,9 +613,9 @@ class MarketScanner:
     def __init__(self,s): self.s=s
 
     @st.cache_data(ttl=600)
-    def _scan(_self,st,pe,pb,dy):
+    def _scan(_self, sectors, pe, pb, dy):
         rows=[]
-        for sec in st:
+        for sec in sectors:
             for tkr,_,full in TAIWAN_STOCK_UNIVERSE.get(sec,[]):
                 try:
                     i=yf.Ticker(tkr+".TW").info
@@ -459,15 +624,27 @@ class MarketScanner:
                     _dy=_norm_div(i.get('dividendYield'))
                     sc=int(_pe<pe)+int(_pb<pb)+int(_dy>dy)
                     if sc>=1:
-                        rows.append({'代號':tkr,'公司名稱':full,'板塊':sec,
-                            '股價':round(float(i.get('currentPrice') or 0),2),
-                            'P/E':round(_pe,2) if _pe!=float('inf') else None,
-                            'P/B':round(_pb,2) if _pb!=float('inf') else None,
-                            '殖利率%':round(_dy,2),
-                            '市值(十億)':round(float(i.get('marketCap') or 0)/1e9,1) or None,
-                            '評分':sc})
+                        _price=float(i.get('currentPrice') or 0)
+                        # 快速估值：EPS × FAIR_PE（P/E法）
+                        _eps=float(i.get('trailingEps') or 0)
+                        _quick_iv=_eps*IMFS_Config.FAIR_PE if _eps>0 else 0.0
+                        _mos_price=_quick_iv*(1-IMFS_Config.MOS)
+                        _in_buy = (_price>0 and _mos_price>0 and _price<=_mos_price)
+                        rows.append({
+                            '代號': tkr,
+                            '公司名稱': full,
+                            '板塊': sec,
+                            '股價': round(_price,2),
+                            'P/E': round(_pe,2) if _pe!=float('inf') else None,
+                            'P/B': round(_pb,2) if _pb!=float('inf') else None,
+                            '殖利率%': round(_dy,2),
+                            '快速公允價(P/E法)': round(_quick_iv,1) if _quick_iv>0 else None,
+                            'MOS安全價': round(_mos_price,1) if _mos_price>0 else None,
+                            '買進區': '✅ 買進區' if _in_buy else ('⏳ 觀望' if _price>0 else '—'),
+                            '評分': sc,
+                        })
                 except: pass
-        rows.sort(key=lambda x:x['評分'],reverse=True)
+        rows.sort(key=lambda x:(x['買進區']=='✅ 買進區', x['評分']),reverse=True)
         return pd.DataFrame(rows) if rows else pd.DataFrame()
 
     def scan(self,pe=15,pb=1.2,dy=2.0): return self._scan(tuple(self.s),pe,pb,dy)
@@ -476,218 +653,349 @@ class MarketScanner:
 # ====================== 側邊欄 ======================
 with st.sidebar:
     st.markdown("""
-    <div style="padding:0.5rem 0.75rem 0.75rem;">
-      <div style="font-size:1.05rem;font-weight:700;color:#E8EDF2;letter-spacing:-0.01em;">IMFS v2.7</div>
-      <div style="font-size:0.7rem;color:#4488FF;margin-top:2px;font-weight:500;">台股機構級輪動系統</div>
-    </div>
-    """, unsafe_allow_html=True)
+<div style="padding:0.6rem 0.75rem 0.6rem;">
+  <div style="font-size:1.1rem;font-weight:800;color:#F9FAFB;letter-spacing:-0.02em;">IMFS v2.8</div>
+  <div style="font-size:0.68rem;color:#60A5FA;margin-top:3px;font-weight:600;letter-spacing:0.04em;">
+    台股機構級輪動系統
+  </div>
+</div>
+""", unsafe_allow_html=True)
     st.markdown("---")
 
     page = st.radio("", [
-        "📊  主儀表板","🏷️  選股與完整估值","🔍  快速查詢",
-        "🎯  動態股票掃描","📈  投資組合模擬","📋  觀察清單","📖  方法論說明",
+        "📊  主儀表板",
+        "🏷️  選股與完整估值",
+        "🔍  快速查詢",
+        "🎯  動態股票掃描",
+        "📈  投資組合模擬",
+        "📋  觀察清單",
+        "📖  方法論說明",
     ], label_visibility="collapsed")
 
     st.markdown("---")
+
+    # 景氣快覽
     st.markdown(f"""
-    <div style="font-size:0.72rem;line-height:2;">
-      <div style="color:#8899AA;font-weight:600;font-size:0.65rem;
-                  text-transform:uppercase;letter-spacing:0.08em;">當前景氣</div>
-      <div style="color:#FFAA00;font-weight:500;">{current_regime}</div>
-      <div style="color:#8899AA;font-weight:600;font-size:0.65rem;
-                  text-transform:uppercase;letter-spacing:0.08em;margin-top:8px;">偏好板塊</div>
-      {"".join(f'<div style="color:#4488FF;">▸ {s}</div>' for s in current_sectors)}
-    </div>
-    """, unsafe_allow_html=True)
+<div style="font-size:0.72rem;line-height:1.9;">
+  <div style="color:#9CA3AF;font-weight:700;font-size:0.62rem;
+              text-transform:uppercase;letter-spacing:0.1em;">當前景氣</div>
+  <div style="color:#FBBF24;font-weight:600;">{current_regime}</div>
+  <div style="color:#9CA3AF;font-weight:700;font-size:0.62rem;
+              text-transform:uppercase;letter-spacing:0.1em;margin-top:8px;">偏好板塊</div>
+  {"".join(f'<div style="color:#60A5FA;">▸ {s}</div>' for s in current_sectors)}
+</div>
+""", unsafe_allow_html=True)
+
+
+# ── 頁面→步驟 映射 ──────────────────────────────────────────────────────────
+PAGE_STEP = {
+    "📊  主儀表板":       1,
+    "🎯  動態股票掃描":   2,
+    "🏷️  選股與完整估值": 3,
+    "🔍  快速查詢":       3,
+    "📈  投資組合模擬":   5,
+    "📋  觀察清單":       5,
+    "📖  方法論說明":     1,
+}
+active_step = PAGE_STEP.get(page, 1)
+mark_step(active_step)
 
 
 # ====================== 路由 ======================
 
 # ── 主儀表板 ──────────────────────────────────────────────────────────────────
 if page == "📊  主儀表板":
-    st.title("主儀表板")
-    st.caption("景氣輪動狀態 ｜ 即時行動建議 ｜ 歷史績效")
+    mark_step(1)
+    col_main, col_guide = st.columns([3, 1])
 
-    c1,c2,c3,c4 = st.columns(4)
-    c1.metric("景氣狀態",      current_regime, "2026 Q2")
-    c2.metric("偏好板塊",      " · ".join(current_sectors))
-    c3.metric("台灣 PMI（3月）","53.3", "-2.1")
-    c4.metric("WACC 景氣加罰", "+150 bps", "過熱期生效")
+    with col_main:
+        st.title("主儀表板")
+        st.caption("景氣輪動狀態 ｜ 即時行動建議 ｜ 歷史績效")
 
-    st.markdown("---")
-    l,r = st.columns([3,2])
-    with l:
-        st.markdown(_sec("立即行動建議（2026 Q2）"), unsafe_allow_html=True)
-        st.info("**配置：** 60–80% 品質／自由現金流／高股息\n\n**板塊：** 金融、電信與公用事業\n\n**門檻：** 股價 ≤ 安全邊際價（內在價值×80%）\n\n**WACC：** 本季加入 +150 bps 景氣懲罰溢價")
-    with r:
-        st.markdown(_sec("風險矩陣"), unsafe_allow_html=True)
-        st.dataframe(pd.DataFrame({
-            "風險":["景氣轉折","地緣政治","通膨急升","流動性"],
-            "機率":["中等","高","中高","中等"],
-            "對應":["PMI季檢","WACC+1.5%","WACC+1.5%懲罰","大型股優先"],
-        }), use_container_width=True, hide_index=True)
+        c1,c2,c3,c4 = st.columns(4)
+        c1.metric("景氣狀態",      current_regime, "2026 Q2")
+        c2.metric("偏好板塊",      " · ".join(current_sectors))
+        c3.metric("台灣 PMI（3月）","53.3", "-2.1")
+        c4.metric("WACC 景氣加罰", "+150 bps", "過熱期生效")
 
-    st.markdown("---")
-    st.markdown(_sec("歷史季度績效（示意）"), unsafe_allow_html=True)
-    t1,t2 = st.tabs(["圖表","數據"])
-    with t1:
-        fig=go.Figure()
-        fig.add_bar(x=df_hist['季度'],y=df_hist['IMFS報酬_%'],name="IMFS",marker_color="#4488FF",marker_line_width=0)
-        fig.add_bar(x=df_hist['季度'],y=df_hist['加權指數報酬_%'],name="加權指數",marker_color="#252B33",marker_line_width=0)
-        fig.update_layout(**PT,barmode='group',height=300,
-                          title=dict(text="季度報酬率對比（%）",font=dict(size=12,color="#8899AA")),
-                          legend=dict(orientation="h",yanchor="bottom",y=1.02,x=0))
-        st.plotly_chart(fig,use_container_width=True)
-    with t2:
-        st.dataframe(df_hist,use_container_width=True,hide_index=True)
+        st.markdown("---")
+        l,r = st.columns([3,2])
+        with l:
+            st.markdown(_sec("立即行動建議（2026 Q2）"), unsafe_allow_html=True)
+            st.info("**配置：** 60–80% 品質／自由現金流／高股息\n\n**板塊：** 金融、電信與公用事業\n\n**門檻：** 股價 ≤ 安全邊際價（內在價值×80%）\n\n**WACC：** 本季加入 +150 bps 景氣懲罰溢價")
+        with r:
+            st.markdown(_sec("風險矩陣"), unsafe_allow_html=True)
+            st.dataframe(pd.DataFrame({
+                "風險":  ["景氣轉折","地緣政治","通膨急升","流動性"],
+                "機率":  ["中等","高","中高","中等"],
+                "對應":  ["PMI季檢","WACC+1.5%","WACC+1.5%懲罰","大型股優先"],
+            }), use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        st.markdown(_sec("歷史季度績效（示意）"), unsafe_allow_html=True)
+        t1,t2 = st.tabs(["圖表","數據"])
+        with t1:
+            fig=go.Figure()
+            fig.add_bar(x=df_hist['季度'],y=df_hist['IMFS報酬_%'],name="IMFS",
+                        marker_color="#60A5FA",marker_line_width=0)
+            fig.add_bar(x=df_hist['季度'],y=df_hist['加權指數報酬_%'],name="加權指數",
+                        marker_color="#374151",marker_line_width=0)
+            fig.update_layout(**PT,barmode='group',height=300,
+                              title=dict(text="季度報酬率對比（%）"),
+                              legend=dict(orientation="h",yanchor="bottom",y=1.02,x=0))
+            st.plotly_chart(fig,use_container_width=True)
+        with t2:
+            st.dataframe(df_hist,use_container_width=True,hide_index=True)
+
+    with col_guide:
+        st.markdown("<br>", unsafe_allow_html=True)
+        render_step_guide(1)
+        st.markdown("---")
+        st.markdown(f"""
+<div style="background:#1F2937;border:1px solid #4B5563;border-radius:8px;padding:0.75rem 1rem;">
+  <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;
+              letter-spacing:0.1em;color:#9CA3AF;margin-bottom:6px;">快速買進門檻</div>
+  <div style="font-size:0.8rem;color:#E5E7EB;line-height:1.9;">
+    ① 股價 ≤ MOS 安全價<br>
+    ② Piotroski ≥ 3<br>
+    ③ 無 Beneish 警示<br>
+    ④ 板塊符合景氣偏好<br>
+    ⑤ 殖利率 ≥ 3%
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 # ── 選股估值 ──────────────────────────────────────────────────────────────────
 elif page == "🏷️  選股與完整估值":
-    st.title("選股與完整估值")
-    st.caption("搜尋台股代號或名稱，執行業主盈餘 DCF 完整估值")
+    col_main, col_guide = st.columns([3,1])
+    with col_main:
+        st.title("選股與完整估值")
+        st.caption("搜尋台股代號或名稱，執行業主盈餘 DCF 完整估值")
 
-    all_s=[{"t":t,"s":s,"f":f,"sec":sec,"disp":f"{t} — {f}  [{sec}]"}
-           for sec,stk in TAIWAN_STOCK_UNIVERSE.items() for t,s,f in stk]
-    q=st.text_input("","",placeholder="搜尋代號或名稱（例：2330、台積電、金融）",
-                    label_visibility="collapsed").strip().lower()
-    fil=([x for x in all_s if q in x["t"] or q in x["f"].lower()
-          or q in x["s"].lower() or q in x["sec"].lower()] if q else all_s)
+        all_s=[{"t":t,"s":s,"f":f,"sec":sec,"disp":f"{t} — {f}  [{sec}]"}
+               for sec,stk in TAIWAN_STOCK_UNIVERSE.items() for t,s,f in stk]
+        q=st.text_input("","",placeholder="搜尋代號或名稱（例：2330、台積電、金融）",
+                        label_visibility="collapsed").strip().lower()
+        fil=([x for x in all_s if q in x["t"] or q in x["f"].lower()
+              or q in x["s"].lower() or q in x["sec"].lower()] if q else all_s)
 
-    if not fil: st.warning("查無結果。")
-    else:
-        cs,cb=st.columns([5,1])
-        with cs:
-            cd=st.selectbox(f"共 {len(fil)} 筆",
-                            [x["disp"] for x in fil],label_visibility="collapsed")
-        chosen=next(x for x in fil if x["disp"]==cd)
-        with cb:
-            st.markdown("<br>",unsafe_allow_html=True)
-            run=st.button("執行估值 ▶",type="primary",use_container_width=True)
+        if not fil: st.warning("查無結果。")
+        else:
+            cs,cb=st.columns([5,1])
+            with cs:
+                cd=st.selectbox(f"共 {len(fil)} 筆",
+                                [x["disp"] for x in fil],label_visibility="collapsed")
+            chosen=next(x for x in fil if x["disp"]==cd)
+            with cb:
+                st.markdown("<br>",unsafe_allow_html=True)
+                run=st.button("執行估值 ▶",type="primary",use_container_width=True)
 
-        st.markdown("---")
-        if run: run_valuation(chosen["t"],chosen["f"],chosen["sec"])
+            st.markdown("---")
+            if run: run_valuation(chosen["t"],chosen["f"],chosen["sec"])
+    with col_guide:
+        st.markdown("<br>", unsafe_allow_html=True)
+        render_step_guide(3)
 
 # ── 快速查詢 ──────────────────────────────────────────────────────────────────
 elif page == "🔍  快速查詢":
-    st.title("快速查詢")
-    c1,c2=st.columns([4,1])
-    tkr=c1.text_input("","2881",label_visibility="collapsed")
-    with c2:
-        st.markdown("<br>",unsafe_allow_html=True)
-        go_=st.button("查詢",type="primary",use_container_width=True)
-    if go_:
-        info=fetch_info(tkr)
-        if info:
-            dy=_norm_div(info.get('dividendYield'))
-            _,full,_=TICKER_LOOKUP.get(tkr,("","",""))
-            r1,r2,r3,r4,r5=st.columns(5)
-            r1.metric("公司",info.get('longName',full) or full)
-            r2.metric("股價",f"NT${info.get('currentPrice','—')}")
-            r3.metric("P/E", f"{info.get('trailingPE','—')}")
-            r4.metric("P/B", f"{info.get('priceToBook','—')}")
-            r5.metric("殖利率",f"{dy:.2f}%")
-        else: st.error("無法取得資料。")
+    col_main, col_guide = st.columns([3,1])
+    with col_main:
+        st.title("快速查詢")
+        c1,c2=st.columns([4,1])
+        tkr=c1.text_input("","2881",label_visibility="collapsed")
+        with c2:
+            st.markdown("<br>",unsafe_allow_html=True)
+            go_=st.button("查詢",type="primary",use_container_width=True)
+        if go_:
+            info=fetch_info(tkr)
+            if info:
+                dy=_norm_div(info.get('dividendYield'))
+                _,full,_=TICKER_LOOKUP.get(tkr,("","",""))
+                r1,r2,r3,r4,r5=st.columns(5)
+                r1.metric("公司",info.get('longName',full) or full)
+                r2.metric("股價",f"NT${info.get('currentPrice','—')}")
+                r3.metric("P/E", f"{info.get('trailingPE','—')}")
+                r4.metric("P/B", f"{info.get('priceToBook','—')}")
+                r5.metric("殖利率",f"{dy:.2f}%")
+            else: st.error("無法取得資料。")
+    with col_guide:
+        st.markdown("<br>", unsafe_allow_html=True)
+        render_step_guide(3)
 
 # ── 動態掃描 ──────────────────────────────────────────────────────────────────
 elif page == "🎯  動態股票掃描":
-    st.title("動態市場掃描")
-    st.caption("景氣感知篩選 ｜ 依偏好板塊自動設定門檻")
+    col_main, col_guide = st.columns([3,1])
+    with col_main:
+        st.title("動態市場掃描")
+        st.caption("景氣感知篩選 ｜ 依偏好板塊自動設定門檻 ｜ 含快速買進區判斷")
 
-    with st.expander("⚙️ 掃描參數",expanded=True):
-        c1,c2,c3,c4=st.columns(4)
-        sel=c1.multiselect("板塊",list(TAIWAN_STOCK_UNIVERSE.keys()),default=current_sectors)
-        pe =c2.number_input("P/E 上限",value=12 if "品質" in current_bias else 18,min_value=1,max_value=50)
-        pb =c3.number_input("P/B 上限",value=1.0 if "品質" in current_bias else 1.5,min_value=0.1,max_value=10.0,step=0.1)
-        dy =c4.number_input("殖利率下限 %",value=3.0 if "品質" in current_bias else 2.0,min_value=0.0,max_value=15.0,step=0.5)
+        with st.expander("⚙️ 掃描參數",expanded=True):
+            c1,c2,c3,c4=st.columns(4)
+            sel=c1.multiselect("板塊",list(TAIWAN_STOCK_UNIVERSE.keys()),default=current_sectors)
+            pe =c2.number_input("P/E 上限",value=12 if "品質" in current_bias else 18,min_value=1,max_value=50)
+            pb =c3.number_input("P/B 上限",value=1.0 if "品質" in current_bias else 1.5,min_value=0.1,max_value=10.0,step=0.1)
+            dy =c4.number_input("殖利率下限 %",value=3.0 if "品質" in current_bias else 2.0,min_value=0.0,max_value=15.0,step=0.5)
 
-    if sel and st.button("立即掃描 ▶",type="primary",use_container_width=True):
-        with st.spinner("掃描中…"):
-            res=MarketScanner(sel).scan(pe,pb,dy)
-        if not res.empty:
-            st.success(f"找到 **{len(res)}** 檔候選標的")
-            ch1,ch2=st.columns(2)
-            with ch1:
-                fp=px.pie(res,names='板塊',title="板塊分布",color_discrete_sequence=C)
-                fp.update_layout(**PT,height=250)
-                st.plotly_chart(fp,use_container_width=True)
-            with ch2:
-                sc=res['評分'].value_counts().reset_index(); sc.columns=['評分','數量']
-                fs=px.bar(sc,x='評分',y='數量',title="評分分布",
-                          color='數量',color_continuous_scale=[[0,"#1E3A5F"],[1,"#4488FF"]])
-                fs.update_layout(**PT,height=250,showlegend=False)
-                st.plotly_chart(fs,use_container_width=True)
+        if sel and st.button("立即掃描 ▶",type="primary",use_container_width=True):
+            with st.spinner("掃描中（含快速估值）…"):
+                res=MarketScanner(sel).scan(pe,pb,dy)
+            if not res.empty:
+                mark_step(2)
+                # 買進區統計
+                buy_cnt=len(res[res['買進區']=='✅ 買進區'])
+                c_a,c_b,c_c = st.columns(3)
+                c_a.metric("候選標的數", len(res))
+                c_b.metric("✅ 在買進區", buy_cnt,
+                           delta_color="normal" if buy_cnt>0 else "off")
+                c_c.metric("⏳ 觀望", len(res)-buy_cnt)
 
-            st.dataframe(res,use_container_width=True,hide_index=True,
-                column_config={
-                    "代號":      st.column_config.TextColumn(width=70),
-                    "公司名稱":  st.column_config.TextColumn(width=160),
-                    "板塊":      st.column_config.TextColumn(width=130),
-                    "股價":      st.column_config.NumberColumn("股價(NT$)",format="%.2f"),
-                    "P/E":       st.column_config.NumberColumn(format="%.2f"),
-                    "P/B":       st.column_config.NumberColumn(format="%.2f"),
-                    "殖利率%":   st.column_config.NumberColumn("殖利率%",format="%.2f"),
-                    "市值(十億)":st.column_config.NumberColumn("市值(十億)",format="%.1f"),
-                    "評分":      st.column_config.ProgressColumn("評分",min_value=0,max_value=3),
-                })
-        else: st.warning("無符合標的，請調整參數。")
+                ch1,ch2=st.columns(2)
+                with ch1:
+                    fp=px.pie(res,names='板塊',title="板塊分布",color_discrete_sequence=C)
+                    fp.update_layout(**PT,height=240)
+                    st.plotly_chart(fp,use_container_width=True)
+                with ch2:
+                    bz=res['買進區'].value_counts().reset_index()
+                    bz.columns=['狀態','數量']
+                    fb=px.bar(bz,x='狀態',y='數量',title="買進區分布",
+                              color='狀態',color_discrete_map={'✅ 買進區':'#34D399','⏳ 觀望':'#9CA3AF','—':'#374151'})
+                    fb.update_layout(**PT,height=240,showlegend=False)
+                    st.plotly_chart(fb,use_container_width=True)
+
+                st.markdown(_sec("掃描結果（含快速買進區判斷）"), unsafe_allow_html=True)
+                st.caption("快速公允價 = 近4季EPS × 15倍 P/E ｜ MOS安全價 = 公允價 × 80% ｜ 買進區 = 現價 ≤ MOS安全價")
+                st.dataframe(res, use_container_width=True, hide_index=True,
+                    column_config={
+                        "代號":            st.column_config.TextColumn(width=70),
+                        "公司名稱":        st.column_config.TextColumn(width=150),
+                        "板塊":            st.column_config.TextColumn(width=120),
+                        "股價":            st.column_config.NumberColumn("股價(NT$)", format="%.2f"),
+                        "P/E":             st.column_config.NumberColumn(format="%.2f"),
+                        "P/B":             st.column_config.NumberColumn(format="%.2f"),
+                        "殖利率%":         st.column_config.NumberColumn("殖利率%", format="%.2f"),
+                        "快速公允價(P/E法)":st.column_config.NumberColumn("公允價(NT$)", format="%.1f"),
+                        "MOS安全價":       st.column_config.NumberColumn("MOS安全價", format="%.1f"),
+                        "買進區":          st.column_config.TextColumn("買進區", width=90),
+                        "評分":            st.column_config.ProgressColumn("評分", min_value=0, max_value=3),
+                    })
+
+                # 買進區高亮
+                buy_stocks = res[res['買進區']=='✅ 買進區']
+                if not buy_stocks.empty:
+                    st.markdown("---")
+                    st.markdown(_sec("✅ 在買進區的標的（建議進一步執行 DCF 完整估值）"), unsafe_allow_html=True)
+                    for _,row in buy_stocks.iterrows():
+                        disc = ((row['股價']-row['MOS安全價'])/row['MOS安全價']*100
+                                if row['MOS安全價'] and row['MOS安全價']>0 else 0)
+                        st.markdown(f"""
+<div style="background:#052E16;border:1px solid #059669;border-radius:8px;
+            padding:0.65rem 1rem;margin-bottom:0.4rem;display:flex;
+            align-items:center;gap:16px;flex-wrap:wrap;">
+  <span style="font-size:0.95rem;font-weight:700;color:#F9FAFB;">
+    {row['代號']} {row['公司名稱']}
+  </span>
+  <span style="color:#9CA3AF;font-size:0.78rem;">{row['板塊']}</span>
+  <span style="color:#34D399;font-weight:700;font-size:0.85rem;">
+    NT${row['股價']:.1f}
+  </span>
+  <span style="color:#9CA3AF;font-size:0.78rem;">
+    安全價 NT${row['MOS安全價']:.1f} ｜ 折價 {disc:.1f}%
+  </span>
+  <span style="color:#34D399;font-size:0.78rem;font-weight:600;">
+    殖利率 {row['殖利率%']:.2f}%
+  </span>
+</div>""", unsafe_allow_html=True)
+            else: st.warning("無符合標的，請調整參數。")
+
+    with col_guide:
+        st.markdown("<br>", unsafe_allow_html=True)
+        render_step_guide(2)
+        st.markdown("---")
+        st.markdown(f"""
+<div style="background:#1F2937;border:1px solid #4B5563;border-radius:8px;padding:0.75rem 1rem;">
+  <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;
+              letter-spacing:0.1em;color:#9CA3AF;margin-bottom:6px;">買進區說明</div>
+  <div style="font-size:0.75rem;color:#E5E7EB;line-height:1.85;">
+    快速估值採<br>
+    <span style="color:#60A5FA;font-weight:600;">EPS × 15倍</span> P/E 法<br>
+    安全邊際打八折<br>
+    ── ✅ 現價 ≤ 安全價<br>
+    ── ⏳ 現價 > 安全價<br><br>
+    <span style="color:#FBBF24;">建議</span>：<br>
+    進入「選股估值」<br>
+    執行完整 DCF 確認
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 # ── 投組模擬 ──────────────────────────────────────────────────────────────────
 elif page == "📈  投資組合模擬":
-    st.title("投資組合回測模擬器")
-    with st.expander("⚙️ 策略設定",expanded=True):
-        c1,c2=st.columns(2)
-        yrs=c1.slider("回測期間（年）",1,5,3)
-        strat=c2.selectbox("策略",["成長型（2330、2308、3231）",
-                                    "品質／高股息（2881、2412、2882）",
-                                    "均衡配置（2330、2881、2308）"])
-    sm={"成長型（2330、2308、3231）":(["2330","2308","3231"],np.array([.40,.35,.25]),"成長型"),
-        "品質／高股息（2881、2412、2882）":(["2881","2412","2882"],np.array([.40,.35,.25]),"品質／高股息"),
-        "均衡配置（2330、2881、2308）":(["2330","2881","2308"],np.array([.33,.33,.34]),"均衡配置")}
-    tkrs,wts,name=sm[strat]
-    ed=datetime.now(); sd=ed-timedelta(days=365*yrs)
-    st.info(f"回測 **{name}** ｜ {sd.date()} → {ed.date()}")
-    with st.spinner("下載歷史價格…"):
-        prices=dl_prices(tuple(tkrs),sd,ed)
-    cum,dret=_calc_ret(prices,wts)
-    if cum is not None and len(cum)>0:
-        tr=cum.iloc[-1]*100; ar=((1+cum.iloc[-1])**(1/yrs)-1)*100
-        vol=dret.std()*np.sqrt(252)*100; shr=(ar-2)/vol if vol>0 else 0
-        mdd=(cum.cummax()-cum).max()*100
-        m1,m2,m3,m4,m5=st.columns(5)
-        m1.metric("總報酬",   f"{tr:.1f}%",  delta_color="normal" if tr>0 else "inverse")
-        m2.metric("年化報酬", f"{ar:.1f}%",  delta_color="normal" if ar>0 else "inverse")
-        m3.metric("年化波動率",f"{vol:.1f}%")
-        m4.metric("夏普比率", f"{shr:.2f}")
-        m5.metric("最大回撤", f"-{mdd:.1f}%")
-        fig3=go.Figure()
-        fig3.add_trace(go.Scatter(x=cum.index,y=cum.values*100,mode='lines',name=name,
-                                   fill='tozeroy',line=dict(color='#4488FF',width=2),
-                                   fillcolor='rgba(68,136,255,0.08)'))
-        fig3.add_hline(y=0,line_dash="dot",line_color="#2F3A47",line_width=1)
-        fig3.update_layout(**PT,height=360,
-                           title=dict(text=f"{name} — 累積報酬率（%）"),
-                           xaxis_title="日期",yaxis_title="累積報酬 (%)")
-        st.plotly_chart(fig3,use_container_width=True)
-    else: st.warning("無法計算，請確認網路或更換策略。")
+    col_main, col_guide = st.columns([3,1])
+    with col_main:
+        st.title("投資組合回測模擬器")
+        with st.expander("⚙️ 策略設定",expanded=True):
+            c1,c2=st.columns(2)
+            yrs=c1.slider("回測期間（年）",1,5,3)
+            strat=c2.selectbox("策略",["成長型（2330、2308、3231）",
+                                        "品質／高股息（2881、2412、2882）",
+                                        "均衡配置（2330、2881、2308）"])
+        sm={"成長型（2330、2308、3231）":(["2330","2308","3231"],np.array([.40,.35,.25]),"成長型"),
+            "品質／高股息（2881、2412、2882）":(["2881","2412","2882"],np.array([.40,.35,.25]),"品質／高股息"),
+            "均衡配置（2330、2881、2308）":(["2330","2881","2308"],np.array([.33,.33,.34]),"均衡配置")}
+        tkrs,wts,name=sm[strat]
+        ed=datetime.now(); sd=ed-timedelta(days=365*yrs)
+        st.info(f"回測 **{name}** ｜ {sd.date()} → {ed.date()}")
+        with st.spinner("下載歷史價格…"):
+            prices=dl_prices(tuple(tkrs),sd,ed)
+        cum,dret=_calc_ret(prices,wts)
+        if cum is not None and len(cum)>0:
+            tr=cum.iloc[-1]*100; ar=((1+cum.iloc[-1])**(1/yrs)-1)*100
+            vol=dret.std()*np.sqrt(252)*100; shr=(ar-2)/vol if vol>0 else 0
+            mdd=(cum.cummax()-cum).max()*100
+            m1,m2,m3,m4,m5=st.columns(5)
+            m1.metric("總報酬",    f"{tr:.1f}%",  delta_color="normal" if tr>0 else "inverse")
+            m2.metric("年化報酬",  f"{ar:.1f}%",  delta_color="normal" if ar>0 else "inverse")
+            m3.metric("年化波動率",f"{vol:.1f}%")
+            m4.metric("夏普比率",  f"{shr:.2f}")
+            m5.metric("最大回撤",  f"-{mdd:.1f}%")
+            fig3=go.Figure()
+            fig3.add_trace(go.Scatter(x=cum.index,y=cum.values*100,mode='lines',name=name,
+                                       fill='tozeroy',line=dict(color='#60A5FA',width=2),
+                                       fillcolor='rgba(96,165,250,0.08)'))
+            fig3.add_hline(y=0,line_dash="dot",line_color="#374151",line_width=1)
+            fig3.update_layout(**PT,height=360,
+                               title=dict(text=f"{name} — 累積報酬率（%）"),
+                               xaxis_title="日期",yaxis_title="累積報酬 (%)")
+            st.plotly_chart(fig3,use_container_width=True)
+        else: st.warning("無法計算，請確認網路或更換策略。")
+    with col_guide:
+        st.markdown("<br>", unsafe_allow_html=True)
+        render_step_guide(5)
 
 # ── 觀察清單 ──────────────────────────────────────────────────────────────────
 elif page == "📋  觀察清單":
-    st.title("觀察清單")
-    wl=st.session_state.get("watchlist",[])
-    if wl:
-        st.dataframe(pd.DataFrame(wl),use_container_width=True,hide_index=True)
-        if st.button("清空清單",type="secondary"):
-            st.session_state["watchlist"]=[]; st.rerun()
-    else: st.info("清單為空，請至「選股與完整估值」加入標的。")
+    col_main, col_guide = st.columns([3,1])
+    with col_main:
+        st.title("觀察清單")
+        wl=st.session_state.get("watchlist",[])
+        if wl:
+            st.dataframe(pd.DataFrame(wl),use_container_width=True,hide_index=True)
+            if st.button("清空清單",type="secondary"):
+                st.session_state["watchlist"]=[]; st.rerun()
+        else: st.info("清單為空，請至「選股與完整估值」加入標的。")
+    with col_guide:
+        st.markdown("<br>", unsafe_allow_html=True)
+        render_step_guide(5)
 
 # ── 方法論 ────────────────────────────────────────────────────────────────────
 elif page == "📖  方法論說明":
     st.title("方法論說明")
-    st.caption("IMFS v2.7：景氣輪動 × 業主盈餘 DCF × 法醫會計")
+    st.caption("IMFS v2.8：景氣輪動 × 業主盈餘 DCF × 法醫會計")
     t1,t2,t3,t4=st.tabs(["一、景氣輪動","二、業主盈餘 DCF","三、法醫會計","四、使用流程"])
     with t1:
         st.markdown("""
 **Investment Clock（Merrill Lynch, 2004）**
+
 | 象限 | 景氣 | 通膨 | 偏好板塊 |
 |------|------|------|----------|
 | 復甦期 | ↑ | ↓ | 景氣循環、消費 |
@@ -707,6 +1015,8 @@ elif page == "📖  方法論說明":
 
 **安全邊際價 = 內在價值 × 80%**
 
+**掃描快速估值：** 近4季EPS × 15倍 P/E 作為公允價，打八折得安全價（適合快速篩選，確認須做完整 DCF）
+
 **殖利率修正：** yfinance 部分台股已回傳百分比格式，系統自動偵測（>1 視為已是%），確保顯示正確。
         """)
     with t3:
@@ -716,24 +1026,25 @@ elif page == "📖  方法論說明":
 **Beneish M-Score（1999）** — 應計比率 > 0.5 疑似盈餘虛增
 
 **Altman Z-Score 代理（1968）** — Z = ROE×2 + 流動比率×0.5 + P/B×0.3
+
 < 1.5 危機 ｜ 1.5-3 灰色 ｜ > 3 安全
         """)
     with t4:
         st.markdown("""
 ```
-1. 景氣確認   → 主儀表板：景氣狀態 + 偏好板塊
-2. 掃描候選   → 動態股票掃描：篩選低估值高殖利率
-3. 深度估值   → 選股與完整估值：DCF + MOS 價格
-4. 法醫篩選   → Piotroski ≥ 3 + 無 Beneish 警示
-5. 景氣適配   → 板塊符合當前偏好
-6. 買進條件   → 股價 ≤ MOS 價 + 財務健全 + 景氣符合
-7. 持倉管理   → 股價 > 內在價值 考慮減碼；每季重評
+步驟 1  景氣確認   → 主儀表板：景氣狀態 + 偏好板塊
+步驟 2  掃描候選   → 動態股票掃描：篩選低估值 + 確認買進區（EPS×15×0.8）
+步驟 3  深度估值   → 選股與完整估值：業主盈餘 DCF + MOS 安全邊際
+步驟 4  法醫篩選   → Piotroski ≥ 3 + 無 Beneish 警示 + Altman Z 安全
+步驟 5  買進判斷   → 股價 ≤ MOS + 板塊符合景氣 + 殖利率 ≥ 3%
+         持倉管理  → 股價 > 內在價值 考慮減碼；每季重評景氣象限
 ```
+右側面板會追蹤你的進度，完成步驟後會顯示綠色打勾。
         """)
 
 # ── 頁腳 ──────────────────────────────────────────────────────────────────────
 st.markdown("---")
-st.markdown('<p style="font-size:0.68rem;color:#2F3A47;text-align:center;">'
-            'IMFS v2.7 ｜ Buffett (1986) · Damodaran (2012) · Graham (1949) · '
+st.markdown('<p style="font-size:0.65rem;color:#374151;text-align:center;">'
+            'IMFS v2.8 ｜ Buffett (1986) · Damodaran (2012) · Graham (1949) · '
             'Piotroski (2000) · Beneish (1999) · Altman (1968) · ML Investment Clock (2004)'
             '</p>', unsafe_allow_html=True)
