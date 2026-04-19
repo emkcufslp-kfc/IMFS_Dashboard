@@ -704,60 +704,215 @@ mark_step(active_step)
 # ====================== 路由 ======================
 
 # ── 主儀表板 ──────────────────────────────────────────────────────────────────
+def _step_hdr(n: int, title: str, sub: str = "") -> str:
+    colors = {1:"#60A5FA", 2:"#34D399", 3:"#FBBF24", 4:"#A78BFA", 5:"#F87171"}
+    c = colors.get(n,"#9CA3AF")
+    return f"""
+<div style="display:flex;align-items:center;gap:12px;
+            background:#1F2937;border:1px solid #374151;border-left:4px solid {c};
+            border-radius:10px;padding:0.7rem 1rem;margin-bottom:1rem;">
+  <div style="background:{c};color:#0D1117;font-weight:900;font-size:0.8rem;
+              border-radius:50%;width:30px;height:30px;display:flex;align-items:center;
+              justify-content:center;flex-shrink:0;">{n}</div>
+  <div>
+    <div style="font-size:1rem;font-weight:700;color:#F9FAFB;">{title}</div>
+    <div style="font-size:0.71rem;color:#9CA3AF;margin-top:1px;">{sub}</div>
+  </div>
+</div>"""
+
 if page == "📊  主儀表板":
     mark_step(1)
+    st.title("投資決策流程")
+    st.caption("依序完成五個步驟，系統化找出當前最佳買進標的")
+    st.markdown("---")
+
     col_main, col_guide = st.columns([3, 1])
 
     with col_main:
-        st.title("主儀表板")
-        st.caption("景氣輪動狀態 ｜ 即時行動建議 ｜ 歷史績效")
+
+        # ── STEP 1：景氣確認 ──────────────────────────────────────────────────
+        st.markdown(_step_hdr(1,"步驟 1　景氣確認","判斷當前市場環境，確立偏好板塊與 WACC 加罰"),
+                    unsafe_allow_html=True)
 
         c1,c2,c3,c4 = st.columns(4)
-        c1.metric("景氣狀態",      current_regime, "2026 Q2")
-        c2.metric("偏好板塊",      " · ".join(current_sectors))
+        c1.metric("景氣狀態",       current_regime, "2026 Q2")
+        c2.metric("偏好板塊",       " · ".join(current_sectors))
         c3.metric("台灣 PMI（3月）","53.3", "-2.1")
-        c4.metric("WACC 景氣加罰", "+150 bps", "過熱期生效")
+        c4.metric("WACC 景氣加罰",  "+150 bps", "過熱期生效")
 
-        st.markdown("---")
-        l,r = st.columns([3,2])
-        with l:
+        l1,r1 = st.columns([3,2])
+        with l1:
             st.markdown(_sec("立即行動建議（2026 Q2）"), unsafe_allow_html=True)
-            st.info("**配置：** 60–80% 品質／自由現金流／高股息\n\n**板塊：** 金融、電信與公用事業\n\n**門檻：** 股價 ≤ 安全邊際價（內在價值×80%）\n\n**WACC：** 本季加入 +150 bps 景氣懲罰溢價")
-        with r:
+            st.info("**配置：** 60–80% 品質／自由現金流／高股息\n\n"
+                    "**板塊：** 金融、電信與公用事業\n\n"
+                    "**門檻：** 股價 ≤ 安全邊際價（內在價值×80%）\n\n"
+                    "**WACC：** 本季加入 +150 bps 景氣懲罰溢價")
+        with r1:
             st.markdown(_sec("風險矩陣"), unsafe_allow_html=True)
             st.dataframe(pd.DataFrame({
-                "風險":  ["景氣轉折","地緣政治","通膨急升","流動性"],
-                "機率":  ["中等","高","中高","中等"],
-                "對應":  ["PMI季檢","WACC+1.5%","WACC+1.5%懲罰","大型股優先"],
+                "風險": ["景氣轉折","地緣政治","通膨急升","流動性"],
+                "機率": ["中等","高","中高","中等"],
+                "對應": ["PMI季檢","WACC+1.5%","WACC+1.5%懲罰","大型股優先"],
             }), use_container_width=True, hide_index=True)
 
-        st.markdown("---")
-        st.markdown(_sec("歷史季度績效（示意）"), unsafe_allow_html=True)
-        t1,t2 = st.tabs(["圖表","數據"])
-        with t1:
+        t_chart,t_data = st.tabs(["歷史績效圖","數據"])
+        with t_chart:
             fig=go.Figure()
             fig.add_bar(x=df_hist['季度'],y=df_hist['IMFS報酬_%'],name="IMFS",
                         marker_color="#60A5FA",marker_line_width=0)
             fig.add_bar(x=df_hist['季度'],y=df_hist['加權指數報酬_%'],name="加權指數",
                         marker_color="#374151",marker_line_width=0)
             fig.update_layout(**{**PT,
-                'barmode':'group','height':300,
+                'barmode':'group','height':260,
                 'title':dict(text="季度報酬率對比（%）",font=dict(color="#E5E7EB",size=12)),
                 'legend':dict(orientation="h",yanchor="bottom",y=1.02,x=0,
                               bgcolor="#1F2937",bordercolor="#4B5563",font=dict(color="#9CA3AF"))})
             st.plotly_chart(fig,use_container_width=True)
-        with t2:
+        with t_data:
             st.dataframe(df_hist,use_container_width=True,hide_index=True)
+
+        st.markdown("---")
+
+        # ── STEP 2：掃描候選 ──────────────────────────────────────────────────
+        st.markdown(_step_hdr(2,"步驟 2　掃描候選","依景氣偏好板塊篩選低估值高殖利率標的，確認買進區"),
+                    unsafe_allow_html=True)
+
+        s2_c1,s2_c2,s2_c3,s2_c4 = st.columns([2,1,1,1])
+        s2_sel = s2_c1.multiselect("板塊篩選",list(TAIWAN_STOCK_UNIVERSE.keys()),
+                                    default=current_sectors,label_visibility="collapsed")
+        s2_pe  = s2_c2.number_input("P/E ≤",value=15,min_value=1,max_value=50,
+                                     label_visibility="collapsed")
+        s2_pb  = s2_c3.number_input("P/B ≤",value=1.2,min_value=0.1,max_value=10.0,step=0.1,
+                                     label_visibility="collapsed")
+        s2_dy  = s2_c4.number_input("殖利率 ≥%",value=3.0,min_value=0.0,max_value=15.0,step=0.5,
+                                     label_visibility="collapsed")
+
+        if s2_sel and st.button("快速掃描 ▶",type="primary",key="main_scan"):
+            with st.spinner("掃描中（含快速估值）…"):
+                st.session_state["main_scan"] = MarketScanner(s2_sel).scan(s2_pe,s2_pb,s2_dy)
+            mark_step(2)
+
+        scan_res = st.session_state.get("main_scan", pd.DataFrame())
+        if not scan_res.empty:
+            buy_n = len(scan_res[scan_res['買進區']=='✅ 買進區'])
+            sa,sb,sc_ = st.columns(3)
+            sa.metric("候選數",  len(scan_res))
+            sb.metric("✅ 買進區", buy_n, delta_color="normal" if buy_n>0 else "off")
+            sc_.metric("⏳ 觀望", len(scan_res)-buy_n)
+
+            st.dataframe(scan_res, use_container_width=True, hide_index=True,
+                column_config={
+                    "代號":             st.column_config.TextColumn(width=70),
+                    "公司名稱":         st.column_config.TextColumn(width=140),
+                    "板塊":             st.column_config.TextColumn(width=110),
+                    "股價":             st.column_config.NumberColumn("股價(NT$)",format="%.2f"),
+                    "P/E":              st.column_config.NumberColumn(format="%.2f"),
+                    "P/B":              st.column_config.NumberColumn(format="%.2f"),
+                    "殖利率%":          st.column_config.NumberColumn("殖利率%",format="%.2f"),
+                    "快速公允價(P/E法)": st.column_config.NumberColumn("公允價",format="%.1f"),
+                    "MOS安全價":        st.column_config.NumberColumn("MOS價",format="%.1f"),
+                    "買進區":           st.column_config.TextColumn("買進區",width=85),
+                    "評分":             st.column_config.ProgressColumn("評分",min_value=0,max_value=3),
+                })
+            buy_rows = scan_res[scan_res['買進區']=='✅ 買進區']
+            if not buy_rows.empty:
+                st.markdown(_sec("✅ 買進區標的 — 建議進入步驟3執行完整DCF估值"),
+                            unsafe_allow_html=True)
+                for _,row in buy_rows.iterrows():
+                    disc=((row['股價']-row['MOS安全價'])/row['MOS安全價']*100
+                          if row['MOS安全價'] and row['MOS安全價']>0 else 0)
+                    st.markdown(f"""
+<div style="background:#052E16;border:1px solid #059669;border-radius:8px;
+            padding:0.55rem 0.9rem;margin-bottom:0.35rem;display:flex;
+            align-items:center;gap:14px;flex-wrap:wrap;">
+  <span style="font-size:0.9rem;font-weight:700;color:#F9FAFB;">{row['代號']} {row['公司名稱']}</span>
+  <span style="color:#9CA3AF;font-size:0.75rem;">{row['板塊']}</span>
+  <span style="color:#34D399;font-weight:700;">NT${row['股價']:.1f}</span>
+  <span style="color:#9CA3AF;font-size:0.75rem;">安全價 NT${row['MOS安全價']:.1f} ｜ 折價 {disc:.1f}%</span>
+  <span style="color:#34D399;font-size:0.75rem;">殖利率 {row['殖利率%']:.2f}%</span>
+</div>""", unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # ── STEP 3+4：深度估值 ＋ 法醫篩選 ──────────────────────────────────
+        st.markdown(_step_hdr(3,"步驟 3 ＋ 4　深度估值 ＋ 法醫篩選",
+                               "業主盈餘 DCF × WACC × Piotroski / Beneish / Altman"),
+                    unsafe_allow_html=True)
+
+        all_s=[{"t":t,"s":s,"f":f,"sec":sec,"disp":f"{t} — {f}  [{sec}]"}
+               for sec,stk in TAIWAN_STOCK_UNIVERSE.items() for t,s,f in stk]
+        # 若掃描有買進區標的，預設第一個
+        default_disp = all_s[0]["disp"]
+        if not scan_res.empty:
+            buy_tickers = list(scan_res[scan_res['買進區']=='✅ 買進區']['代號'])
+            if buy_tickers:
+                hit = next((x for x in all_s if x["t"]==buy_tickers[0]), None)
+                if hit: default_disp = hit["disp"]
+        default_idx = next((i for i,x in enumerate(all_s) if x["disp"]==default_disp), 0)
+
+        vs_col, vb_col = st.columns([5,1])
+        with vs_col:
+            v_disp = st.selectbox("選擇標的",[x["disp"] for x in all_s],
+                                  index=default_idx, label_visibility="collapsed")
+        v_chosen = next(x for x in all_s if x["disp"]==v_disp)
+        with vb_col:
+            st.markdown("<br>",unsafe_allow_html=True)
+            v_run = st.button("執行估值 ▶",type="primary",use_container_width=True,key="main_val")
+        if v_run:
+            run_valuation(v_chosen["t"], v_chosen["f"], v_chosen["sec"])
+
+        st.markdown("---")
+
+        # ── STEP 5：買進判斷 ──────────────────────────────────────────────────
+        st.markdown(_step_hdr(5,"步驟 5　買進判斷",
+                               "逐項確認買進條件，全部達標方可建立部位"),
+                    unsafe_allow_html=True)
+
+        wl = st.session_state.get("watchlist",[])
+        chk = [
+            ("股價 ≤ MOS 安全邊際價（內在價值 × 80%）", 5 in st.session_state["step_done"]),
+            ("Piotroski F-Score ≥ 3（財務健全）",       4 in st.session_state["step_done"]),
+            ("無 Beneish 應計虛增警示",                  4 in st.session_state["step_done"]),
+            ("板塊符合當前景氣偏好",                     2 in st.session_state["step_done"]),
+            ("殖利率 ≥ 3%（高股息景氣偏好期）",          2 in st.session_state["step_done"]),
+        ]
+        passed = sum(1 for _,v in chk if v)
+        signal_color = "#34D399" if passed==5 else "#FBBF24" if passed>=3 else "#F87171"
+        signal_label = "全條件達標 — 可考慮建立部位" if passed==5 else \
+                       f"部分達標（{passed}/5）— 繼續完成上方步驟" if passed>=3 else \
+                       f"未達標（{passed}/5）— 請先完成步驟 2、3、4"
+
+        st.markdown(f"""
+<div style="background:#1F2937;border:1px solid #4B5563;border-radius:10px;padding:1rem 1.1rem;">
+  <div style="font-size:0.9rem;font-weight:700;color:{signal_color};margin-bottom:0.8rem;">
+    {signal_label}
+  </div>""", unsafe_allow_html=True)
+        for label, ok in chk:
+            icon  = "✅" if ok else "⬜"
+            color = "#E5E7EB" if ok else "#6B7280"
+            st.markdown(f'<div style="font-size:0.82rem;color:{color};'
+                        f'padding:3px 0;">{icon}  {label}</div>',
+                        unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        if wl:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown(_sec(f"觀察清單（{len(wl)} 檔）"), unsafe_allow_html=True)
+            st.dataframe(pd.DataFrame(wl), use_container_width=True, hide_index=True)
 
     with col_guide:
         st.markdown("<br>", unsafe_allow_html=True)
-        render_step_guide(1)
+        active = (5 if 5 in st.session_state["step_done"] else
+                  4 if 4 in st.session_state["step_done"] else
+                  3 if 3 in st.session_state["step_done"] else
+                  2 if 2 in st.session_state["step_done"] else 1)
+        render_step_guide(active)
         st.markdown("---")
-        st.markdown(f"""
+        st.markdown("""
 <div style="background:#1F2937;border:1px solid #4B5563;border-radius:8px;padding:0.75rem 1rem;">
-  <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;
-              letter-spacing:0.1em;color:#9CA3AF;margin-bottom:6px;">快速買進門檻</div>
-  <div style="font-size:0.8rem;color:#E5E7EB;line-height:1.9;">
+  <div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;
+              letter-spacing:0.1em;color:#9CA3AF;margin-bottom:6px;">五大買進門檻</div>
+  <div style="font-size:0.75rem;color:#E5E7EB;line-height:1.95;">
     ① 股價 ≤ MOS 安全價<br>
     ② Piotroski ≥ 3<br>
     ③ 無 Beneish 警示<br>
