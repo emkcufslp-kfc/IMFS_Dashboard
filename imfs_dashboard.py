@@ -740,9 +740,11 @@ if page == "📊  主儀表板":
                         marker_color="#60A5FA",marker_line_width=0)
             fig.add_bar(x=df_hist['季度'],y=df_hist['加權指數報酬_%'],name="加權指數",
                         marker_color="#374151",marker_line_width=0)
-            fig.update_layout(**PT,barmode='group',height=300,
-                              title=dict(text="季度報酬率對比（%）"),
-                              legend=dict(orientation="h",yanchor="bottom",y=1.02,x=0))
+            fig.update_layout(**{**PT,
+                'barmode':'group','height':300,
+                'title':dict(text="季度報酬率對比（%）",font=dict(color="#E5E7EB",size=12)),
+                'legend':dict(orientation="h",yanchor="bottom",y=1.02,x=0,
+                              bgcolor="#1F2937",bordercolor="#4B5563",font=dict(color="#9CA3AF"))})
             st.plotly_chart(fig,use_container_width=True)
         with t2:
             st.dataframe(df_hist,use_container_width=True,hide_index=True)
@@ -963,9 +965,11 @@ elif page == "📈  投資組合模擬":
                                        fill='tozeroy',line=dict(color='#60A5FA',width=2),
                                        fillcolor='rgba(96,165,250,0.08)'))
             fig3.add_hline(y=0,line_dash="dot",line_color="#374151",line_width=1)
-            fig3.update_layout(**PT,height=360,
-                               title=dict(text=f"{name} — 累積報酬率（%）"),
-                               xaxis_title="日期",yaxis_title="累積報酬 (%)")
+            fig3.update_layout(**{**PT,
+                'height':360,
+                'title':dict(text=f"{name} — 累積報酬率（%）",font=dict(color="#E5E7EB",size=12))})
+            fig3.update_xaxes(title_text="日期")
+            fig3.update_yaxes(title_text="累積報酬 (%)")
             st.plotly_chart(fig3,use_container_width=True)
         else: st.warning("無法計算，請確認網路或更換策略。")
     with col_guide:
