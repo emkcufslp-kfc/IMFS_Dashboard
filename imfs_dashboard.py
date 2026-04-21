@@ -635,50 +635,51 @@ def run_valuation(ticker, company, sector):
     c5.metric("WACC",            f"{wacc*100:.2f}%")
     c6.metric("股息殖利率",      f"{dy:.2f}%")
     if not valuation_ready:
-        st.warning("此標的估值結果小於等於 0，暫不提供買進區判斷；請改用觀察或更換標的。")
+        st.warning("此標的目前估值資料品質不足或估值結果不可用，暫不提供買進區判斷；請改用觀察或更換標的。")
 
     st.markdown("---")
 
-    # ── WACC & DCF 圖 ──
-    l,r = st.columns(2)
-    with l:
-        st.markdown(_sec("WACC 拆解"), unsafe_allow_html=True)
-        wdf=pd.DataFrame({"組成":["無風險利率","Beta×ERP","地緣緩衝","景氣懲罰","WACC"],
-                          "%":[rf*100,beta*IMFS_Config.ERP,IMFS_Config.GEO_BUFFER/100,
-                               IMFS_Config.REGIME_PENALTY/100 if _overheat() else 0,wacc*100]})
-        fw=px.bar(wdf,x="組成",y="%",text_auto=".2f",color_discrete_sequence=["#60A5FA"])
-        fw.update_traces(textfont_color="#F9FAFB",textposition="outside",marker_line_width=0)
-        fw.update_layout(**PT,height=260,showlegend=False)
-        st.plotly_chart(fw,use_container_width=True)
+    if valuation_ready:
+        # Keep decomposition visuals only when the valuation is usable.
+        l,r = st.columns(2)
+        with l:
+            st.markdown(_sec("WACC 拆解"), unsafe_allow_html=True)
+            wdf=pd.DataFrame({"組成":["無風險利率","Beta×ERP","地緣緩衝","景氣懲罰","WACC"],
+                              "%":[rf*100,beta*IMFS_Config.ERP,IMFS_Config.GEO_BUFFER/100,
+                                   IMFS_Config.REGIME_PENALTY/100 if _overheat() else 0,wacc*100]})
+            fw=px.bar(wdf,x="組成",y="%",text_auto=".2f",color_discrete_sequence=["#60A5FA"])
+            fw.update_traces(textfont_color="#F9FAFB",textposition="outside",marker_line_width=0)
+            fw.update_layout(**PT,height=260,showlegend=False,title_text="")
+            st.plotly_chart(fw,use_container_width=True)
 
-    with r:
-        st.markdown(_sec("DCF 估值拆解"), unsafe_allow_html=True)
-        ddf=pd.DataFrame({"項目":["5年現金流","永續價值","內在價值","安全邊際價"],
-                          "NT$":[pv5,tvp,iv,mos]})
-        fd=px.bar(ddf,x="項目",y="NT$",text_auto=".1f",color="項目",
-                  color_discrete_sequence=["#1E3A5F","#2563EB","#60A5FA","#FBBF24"])
-        if price:
-            fd.add_hline(y=price,line_dash="dot",line_color="#F87171",line_width=1.5,
-                         annotation_text=f"現價 {price:.0f}",
-                         annotation_font_color="#F87171",annotation_bgcolor="#450A0A")
-        fd.update_traces(textfont_color="#F9FAFB",marker_line_width=0)
-        fd.update_layout(**PT,height=260,showlegend=False)
-        st.plotly_chart(fd,use_container_width=True)
+        with r:
+            st.markdown(_sec("DCF 估值拆解"), unsafe_allow_html=True)
+            ddf=pd.DataFrame({"項目":["5年現金流","永續價值","內在價值","安全邊際價"],
+                              "NT$":[pv5,tvp,iv,mos]})
+            fd=px.bar(ddf,x="項目",y="NT$",text_auto=".1f",color="項目",
+                      color_discrete_sequence=["#1E3A5F","#2563EB","#60A5FA","#FBBF24"])
+            if price:
+                fd.add_hline(y=price,line_dash="dot",line_color="#F87171",line_width=1.5,
+                             annotation_text=f"現價 {price:.0f}",
+                             annotation_font_color="#F87171",annotation_bgcolor="#450A0A")
+            fd.update_traces(textfont_color="#F9FAFB",marker_line_width=0)
+            fd.update_layout(**PT,height=260,showlegend=False,title_text="")
+            st.plotly_chart(fd,use_container_width=True)
 
-    # ── 業主盈餘 ──
-    st.markdown(_sec("業主盈餘（Owner Earnings = 淨利 ＋ 折舊攤銷 － 資本支出）"), unsafe_allow_html=True)
-    e1,e2,e3,e4 = st.columns(4)
-    if not cf.empty:
-        e1.metric("淨利",       f"NT${ni/1e9:.2f}B")
-        e2.metric("＋折舊攤銷", f"NT${da/1e9:.2f}B")
-        e3.metric("－資本支出", f"NT${cx/1e9:.2f}B")
-        e4.metric("＝業主盈餘", f"NT${oe/1e9:.2f}B")
+        st.markdown(_sec("業主盈餘（Owner Earnings = 淨利 ＋ 折舊攤銷 － 資本支出）"), unsafe_allow_html=True)
+        e1,e2,e3,e4 = st.columns(4)
+        if not cf.empty:
+            e1.metric("淨利",       f"NT${ni/1e9:.2f}B")
+            e2.metric("＋折舊攤銷", f"NT${da/1e9:.2f}B")
+            e3.metric("－資本支出", f"NT${cx/1e9:.2f}B")
+            e4.metric("＝業主盈餘", f"NT${oe/1e9:.2f}B")
+        else:
+            e1.metric("自由現金流（替代）", f"NT${oe/1e9:.2f}B")
+            st.caption("現金流量表資料不足，以自由現金流替代")
     else:
-        e1.metric("自由現金流（替代）", f"NT${oe/1e9:.2f}B")
-        st.caption("現金流量表資料不足，以自由現金流替代")
-
-    if (not valuation_ready) and (iv_price_ratio is not None) and (iv_price_ratio < 0.2):
-        st.caption(f"估值品質提醒：內在價值/現價 = {iv_price_ratio:.2f}，低於可用門檻 0.20。")
+        st.info("估值拆解（WACC / DCF / 業主盈餘）已隱藏，因為目前資料品質不足，避免誤導判斷。")
+        if iv_price_ratio is not None:
+            st.caption(f"估值品質提醒：內在價值/現價 = {iv_price_ratio:.2f}，門檻需 >= 0.20。")
 
     st.markdown("---")
 
