@@ -639,6 +639,10 @@ def run_valuation(ticker, company, sector):
 
     st.markdown("---")
 
+    st.markdown(_step_hdr(4, "步驟 4　法醫篩選",
+                          "檢查 Piotroski / Beneish / Altman，確認財務品質"),
+                unsafe_allow_html=True)
+
     # ── 法醫評分 ──
     st.markdown(_sec("財務健全度（法醫會計）"), unsafe_allow_html=True)
     f1,f2,f3 = st.columns(3)
