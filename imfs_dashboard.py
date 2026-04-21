@@ -837,11 +837,10 @@ if page == "📊  主儀表板":
 
         st.markdown("---")
 
-        # ── STEP 3+4：深度估值 ＋ 法醫篩選 ──────────────────────────────────
-        st.markdown(_step_hdr(3,"步驟 3 ＋ 4　深度估值 ＋ 法醫篩選",
-                               "業主盈餘 DCF × WACC × Piotroski / Beneish / Altman"),
+        # ── STEP 3：深度估值（同步執行步驟4法醫篩選） ───────────────────────
+        st.markdown(_step_hdr(3,"步驟 3　深度估值",
+                               "執行 DCF / WACC，並同步完成步驟4法醫篩選（Piotroski / Beneish / Altman）"),
                     unsafe_allow_html=True)
-
         all_s=[{"t":t,"s":s,"f":f,"sec":sec,"disp":f"{t} — {f}  [{sec}]"}
                for sec,stk in TAIWAN_STOCK_UNIVERSE.items() for t,s,f in stk]
         # 若掃描有買進區標的，預設第一個
