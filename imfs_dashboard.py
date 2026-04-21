@@ -375,8 +375,70 @@ def _sec(text: str) -> str:
 
 @st.cache_data(ttl=300)
 def fetch_info(t: str) -> dict:
-    try: return yf.Ticker(t+".TW").info
-    except: return {}
+    symbol = t + ".TW"
+    tk = yf.Ticker(symbol)
+
+    # Primary source
+    try:
+        info = tk.info
+        if isinstance(info, dict) and info:
+            return info
+    except:
+        pass
+
+    # Fallback for environments where .info is unstable/rate-limited
+    out = {"symbol": symbol}
+    try:
+        fi = tk.fast_info
+    except:
+        fi = None
+
+    def _fi_get(key):
+        if fi is None:
+            return None
+        try:
+            return fi.get(key)
+        except:
+            try:
+                return fi[key]
+            except:
+                return None
+
+    lp = _fi_get("last_price")
+    mc = _fi_get("market_cap")
+    sh = _fi_get("shares")
+    pc = _fi_get("previous_close")
+    dh = _fi_get("day_high")
+    dl = _fi_get("day_low")
+
+    if lp is not None:
+        out["currentPrice"] = float(lp)
+        out["regularMarketPrice"] = float(lp)
+    if mc is not None:
+        out["marketCap"] = float(mc)
+    if sh is not None:
+        out["sharesOutstanding"] = float(sh)
+    if pc is not None:
+        out["previousClose"] = float(pc)
+    if dh is not None:
+        out["dayHigh"] = float(dh)
+    if dl is not None:
+        out["dayLow"] = float(dl)
+
+    # Final fallback: derive current price from recent candles
+    if "currentPrice" not in out:
+        try:
+            h = tk.history(period="5d", auto_adjust=False)
+            if not h.empty and "Close" in h.columns:
+                p = h["Close"].dropna()
+                if not p.empty:
+                    last = float(p.iloc[-1])
+                    out["currentPrice"] = last
+                    out["regularMarketPrice"] = last
+        except:
+            pass
+
+    return out if "currentPrice" in out else {}
 
 @st.cache_data(ttl=300)
 def fetch_cf(t: str) -> pd.DataFrame:
