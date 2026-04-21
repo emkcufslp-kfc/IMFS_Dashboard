@@ -377,17 +377,18 @@ def _sec(text: str) -> str:
 def fetch_info(t: str) -> dict:
     symbol = t + ".TW"
     tk = yf.Ticker(symbol)
+    out = {"symbol": symbol}
+    h = pd.DataFrame()
 
     # Primary source
     try:
         info = tk.info
         if isinstance(info, dict) and info:
-            return info
+            out.update(info)
     except:
         pass
 
     # Fallback for environments where .info is unstable/rate-limited
-    out = {"symbol": symbol}
     try:
         fi = tk.fast_info
     except:
@@ -425,18 +426,26 @@ def fetch_info(t: str) -> dict:
     if dl is not None:
         out["dayLow"] = float(dl)
 
-    # Final fallback: derive current price from recent candles
+    # Candle verification source (used for validation even when .info exists)
+    try:
+        h = tk.history(period="10d", auto_adjust=False)
+    except:
+        h = pd.DataFrame()
+
+    if not h.empty and "Close" in h.columns:
+        p = h["Close"].dropna()
+        if not p.empty:
+            out["_last_close"] = float(p.iloc[-1])
+            out["_last_close_date"] = str(p.index[-1].date())
+
+    # Fallback: derive current price from recent candles
     if "currentPrice" not in out:
-        try:
-            h = tk.history(period="5d", auto_adjust=False)
-            if not h.empty and "Close" in h.columns:
-                p = h["Close"].dropna()
-                if not p.empty:
-                    last = float(p.iloc[-1])
-                    out["currentPrice"] = last
-                    out["regularMarketPrice"] = last
-        except:
-            pass
+        if not h.empty and "Close" in h.columns:
+            p = h["Close"].dropna()
+            if not p.empty:
+                last = float(p.iloc[-1])
+                out["currentPrice"] = last
+                out["regularMarketPrice"] = last
 
     return out if "currentPrice" in out else {}
 
@@ -524,6 +533,26 @@ def run_valuation(ticker, company, sector):
     beta  =float(info.get('beta') or 1.0)
     mktcap=float(info.get('marketCap') or price*shares)
     debt  =float(info.get('totalDebt') or 0)
+    last_close = float(info.get('_last_close') or 0)
+    last_close_date = str(info.get('_last_close_date') or "")
+    price_gap = (abs(price-last_close)/last_close) if (price>0 and last_close>0) else None
+    is_recent = False
+    if last_close_date:
+        try:
+            d = datetime.strptime(last_close_date, "%Y-%m-%d").date()
+            is_recent = (datetime.now().date() - d).days <= 10
+        except:
+            is_recent = False
+    price_verified = (price > 0 and last_close > 0 and is_recent and (price_gap is not None and price_gap <= 0.30))
+    if not price_verified:
+        st.error("資料驗證未通過：最新價格與近10日收盤資料無法一致驗證，已停止本次估值。")
+        if price > 0:
+            st.caption(f"現價: NT${price:,.2f}")
+        if last_close > 0:
+            st.caption(f"最近收盤: NT${last_close:,.2f}（{last_close_date}）")
+        if price_gap is not None:
+            st.caption(f"價差比: {price_gap*100:.1f}%（需 <= 30%）")
+        return
 
     if not cf.empty:
         ni=_cfrow(cf,'Net Income','NetIncome')
@@ -547,7 +576,13 @@ def run_valuation(ticker, company, sector):
     pv5=sum(oeps*(1+g5)**y/(1+wacc)**y for y in range(1,6))
     tvp=(oeps*(1+g5)**5*(1+tg)/(wacc-tg))/(1+wacc)**5 if wacc>tg else 0.0
     iv=pv5+tvp; mos=iv*(1-IMFS_Config.MOS)
-    valuation_ready = (iv > 0 and mos > 0)
+    iv_price_ratio = (iv / price) if price > 0 else None
+    valuation_ready = (
+        iv > 0 and
+        mos > 0 and
+        iv_price_ratio is not None and
+        iv_price_ratio >= 0.2
+    )
     up=((iv-price)/price*100) if (price>0 and valuation_ready) else None
 
     sig=("買進 — 低於安全邊際價" if price>0 and price<=mos else
@@ -586,6 +621,7 @@ def run_valuation(ticker, company, sector):
 </div>
 """, unsafe_allow_html=True)
     st.markdown(_badge_html(sig), unsafe_allow_html=True)
+    st.caption(f"資料驗證：✅ 通過｜現價 NT${price:,.2f}；最近收盤 NT${last_close:,.2f}（{last_close_date}）")
     st.markdown("---")
 
     # ── KPI 列 ──
@@ -640,6 +676,9 @@ def run_valuation(ticker, company, sector):
     else:
         e1.metric("自由現金流（替代）", f"NT${oe/1e9:.2f}B")
         st.caption("現金流量表資料不足，以自由現金流替代")
+
+    if (not valuation_ready) and (iv_price_ratio is not None) and (iv_price_ratio < 0.2):
+        st.caption(f"估值品質提醒：內在價值/現價 = {iv_price_ratio:.2f}，低於可用門檻 0.20。")
 
     st.markdown("---")
 
