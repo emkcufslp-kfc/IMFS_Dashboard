@@ -547,7 +547,8 @@ def run_valuation(ticker, company, sector):
     pv5=sum(oeps*(1+g5)**y/(1+wacc)**y for y in range(1,6))
     tvp=(oeps*(1+g5)**5*(1+tg)/(wacc-tg))/(1+wacc)**5 if wacc>tg else 0.0
     iv=pv5+tvp; mos=iv*(1-IMFS_Config.MOS)
-    up=((iv-price)/price*100) if price>0 else 0.0
+    valuation_ready = (iv > 0 and mos > 0)
+    up=((iv-price)/price*100) if (price>0 and valuation_ready) else None
 
     sig=("買進 — 低於安全邊際價" if price>0 and price<=mos else
          "持有 — 低於內在價值"   if price>0 and price<=iv  else
@@ -566,7 +567,7 @@ def run_valuation(ticker, company, sector):
     # 步驟 3 完成（估值執行）
     mark_step(3)
     if pf>=3 and (ni_i-ocf)/max(abs(ni_i),1)<=0.5: mark_step(4)
-    if price>0 and price<=mos: mark_step(5)
+    if price>0 and valuation_ready and price<=mos: mark_step(5)
 
     # ── Header ──
     fit = sector in current_sectors
@@ -590,12 +591,15 @@ def run_valuation(ticker, company, sector):
     # ── KPI 列 ──
     c1,c2,c3,c4,c5,c6 = st.columns(6)
     c1.metric("目前股價",        f"NT${price:,.1f}" if price else "—")
-    c2.metric("內在價值（DCF）", f"NT${iv:,.1f}"    if iv else "—")
-    c3.metric("安全邊際價",      f"NT${mos:,.1f}"   if mos else "—", "-20%")
-    c4.metric("距內在價值",      f"{up:+.1f}%"      if price else "—",
-              delta_color="normal" if up<0 else "inverse")
+    c2.metric("內在價值（DCF）", f"NT${iv:,.1f}"    if valuation_ready else "N/A")
+    c3.metric("安全邊際價",      f"NT${mos:,.1f}"   if valuation_ready else "N/A",
+              "-20%" if valuation_ready else None)
+    c4.metric("距內在價值",      f"{up:+.1f}%"      if up is not None else "N/A",
+              delta_color="normal" if (up is not None and up<0) else "inverse")
     c5.metric("WACC",            f"{wacc*100:.2f}%")
     c6.metric("股息殖利率",      f"{dy:.2f}%")
+    if not valuation_ready:
+        st.warning("此標的估值結果小於等於 0，暫不提供買進區判斷；請改用觀察或更換標的。")
 
     st.markdown("---")
 
