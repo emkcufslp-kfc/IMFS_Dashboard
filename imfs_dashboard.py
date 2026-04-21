@@ -787,12 +787,15 @@ if page == "📊  主儀表板":
         s2_dy  = s2_c4.number_input("殖利率 ≥%",value=3.0,min_value=0.0,max_value=15.0,step=0.5,
                                      label_visibility="collapsed")
 
-        if s2_sel and st.button("快速掃描 ▶",type="primary",key="main_scan"):
+        scan_triggered = st.button("快速掃描 ▶", type="primary", key="main_scan_btn")
+        if s2_sel and scan_triggered:
             with st.spinner("掃描中（含快速估值）…"):
                 st.session_state["main_scan"] = MarketScanner(s2_sel).scan(s2_pe,s2_pb,s2_dy)
             mark_step(2)
 
-        scan_res = st.session_state.get("main_scan", pd.DataFrame())
+        scan_res = st.session_state.get("main_scan")
+        if not isinstance(scan_res, pd.DataFrame):
+            scan_res = pd.DataFrame()
         if not scan_res.empty:
             buy_n = len(scan_res[scan_res['買進區']=='✅ 買進區'])
             sa,sb,sc_ = st.columns(3)
