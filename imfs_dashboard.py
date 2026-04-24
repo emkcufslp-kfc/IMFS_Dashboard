@@ -11,6 +11,8 @@ import yfinance as yf
 from datetime import datetime, timedelta
 import numpy as np
 
+from twse_data import build_twse_snapshot
+
 st.set_page_config(
     page_title="IMFS v2.8",
     layout="wide",
@@ -388,6 +390,12 @@ def fetch_info(t: str) -> dict:
     except:
         pass
 
+    twse = build_twse_snapshot(t)
+    if twse:
+        for k, v in twse.items():
+            if v is not None and v != "":
+                out[k] = v
+
     # Fallback for environments where .info is unstable/rate-limited
     try:
         fi = tk.fast_info
@@ -426,26 +434,30 @@ def fetch_info(t: str) -> dict:
     if dl is not None:
         out["dayLow"] = float(dl)
 
-    # Candle verification source (used for validation even when .info exists)
-    try:
-        h = tk.history(period="10d", auto_adjust=False)
-    except:
-        h = pd.DataFrame()
+    # Candle verification source (used only when TWSE daily close is unavailable)
+    if "_last_close" not in out:
+        try:
+            h = tk.history(period="10d", auto_adjust=False)
+        except:
+            h = pd.DataFrame()
 
-    if not h.empty and "Close" in h.columns:
-        p = h["Close"].dropna()
-        if not p.empty:
-            out["_last_close"] = float(p.iloc[-1])
-            out["_last_close_date"] = str(p.index[-1].date())
-
-    # Fallback: derive current price from recent candles
-    if "currentPrice" not in out:
         if not h.empty and "Close" in h.columns:
+            p = h["Close"].dropna()
+            if not p.empty:
+                out["_last_close"] = float(p.iloc[-1])
+                out["_last_close_date"] = str(p.index[-1].date())
+
+        if "currentPrice" not in out and not h.empty and "Close" in h.columns:
             p = h["Close"].dropna()
             if not p.empty:
                 last = float(p.iloc[-1])
                 out["currentPrice"] = last
                 out["regularMarketPrice"] = last
+
+    if twse:
+        for k, v in twse.items():
+            if v is not None and v != "":
+                out[k] = v
 
     return out if "currentPrice" in out else {}
 
@@ -533,6 +545,8 @@ def run_valuation(ticker, company, sector):
     beta  =float(info.get('beta') or 1.0)
     mktcap=float(info.get('marketCap') or price*shares)
     debt  =float(info.get('totalDebt') or 0)
+    source_label = "TWSE 官方優先 + Yahoo 補充" if info.get("_twse_snapshot_ready") else "Yahoo Finance"
+    eps_ttm = float(info.get('trailingEps') or 0)
     last_close = float(info.get('_last_close') or 0)
     last_close_date = str(info.get('_last_close_date') or "")
     price_gap = (abs(price-last_close)/last_close) if (price>0 and last_close>0) else None
@@ -545,7 +559,7 @@ def run_valuation(ticker, company, sector):
             is_recent = False
     price_verified = (price > 0 and last_close > 0 and is_recent and (price_gap is not None and price_gap <= 0.30))
     if not price_verified:
-        st.error("資料驗證未通過：最新價格與近10日收盤資料無法一致驗證，已停止本次估值。")
+        st.error("資料驗證未通過：最新價格與近期收盤無法一致驗證，已停止本次估值。")
         if price > 0:
             st.caption(f"現價: NT${price:,.2f}")
         if last_close > 0:
@@ -553,7 +567,6 @@ def run_valuation(ticker, company, sector):
         if price_gap is not None:
             st.caption(f"價差比: {price_gap*100:.1f}%（需 <= 30%）")
         return
-
     if not cf.empty:
         ni=_cfrow(cf,'Net Income','NetIncome')
         da=_cfrow(cf,'Depreciation And Amortization','Reconciled Depreciation','DepreciationAndAmortization')
@@ -584,10 +597,51 @@ def run_valuation(ticker, company, sector):
         iv_price_ratio >= 0.2
     )
     up=((iv-price)/price*100) if (price>0 and valuation_ready) else None
+    valuation_mode = "dcf"
+    valuation_label = "內在價值（DCF）"
+    valuation_note = "使用現金流量表資料計算業主盈餘 DCF。"
+    wacc_display = f"{wacc*100:.2f}%"
+    if cf.empty:
+        fcf_total = float(info.get('freeCashflow') or 0)
+        if fcf_total > 0:
+            valuation_mode = "fcf"
+            valuation_label = "內在價值（FCF 法）"
+            valuation_note = "現金流量表不足，改用自由現金流估值。"
+        elif eps_ttm > 0:
+            valuation_mode = "eps"
+            valuation_label = "內在價值（EPS 法）"
+            valuation_note = "無可用現金流資料，改用官方 EPS × 合理 P/E 估值。"
+            iv = eps_ttm * IMFS_Config.FAIR_PE
+            mos = iv * (1-IMFS_Config.MOS)
+            iv_price_ratio = (iv / price) if price > 0 else None
+            valuation_ready = (
+                iv > 0 and
+                mos > 0 and
+                iv_price_ratio is not None and
+                iv_price_ratio >= 0.2
+            )
+            up = ((iv-price)/price*100) if (price>0 and valuation_ready) else None
+            wacc_display = "N/A"
+        else:
+            valuation_mode = "unavailable"
+            valuation_label = "內在價值"
+            valuation_note = "缺少現金流與 EPS，無法完成估值。"
+            wacc_display = "N/A"
 
     sig=("買進 — 低於安全邊際價" if price>0 and price<=mos else
          "持有 — 低於內在價值"   if price>0 and price<=iv  else
          "觀望 — 高於內在價值")
+
+    if valuation_mode == "unavailable":
+        sig = "觀察 — 缺少可用估值資料"
+    elif not valuation_ready:
+        sig = "觀察 — 估值資料品質不足"
+    elif price > 0 and price <= mos:
+        sig = "買進 — 低於安全邊際價"
+    elif price > 0 and price <= iv:
+        sig = "持有 — 低於內在價值"
+    else:
+        sig = "觀望 — 高於內在價值"
 
     roe=float(info.get('returnOnEquity') or 0)
     roa=float(info.get('returnOnAssets') or 0)
@@ -600,8 +654,9 @@ def run_valuation(ticker, company, sector):
     pf =sum([roe>0,roa>0,ocf>0,ocf>ni_i,de<100,cr>1,float(info.get('earningsGrowth') or 0)>0])
 
     # 步驟 3 完成（估值執行）
-    mark_step(3)
-    if pf>=3 and (ni_i-ocf)/max(abs(ni_i),1)<=0.5: mark_step(4)
+    if valuation_mode != "unavailable":
+        mark_step(3)
+    if valuation_mode != "unavailable" and pf>=3 and (ni_i-ocf)/max(abs(ni_i),1)<=0.5: mark_step(4)
     if price>0 and valuation_ready and price<=mos: mark_step(5)
 
     # ── Header ──
@@ -621,25 +676,26 @@ def run_valuation(ticker, company, sector):
 </div>
 """, unsafe_allow_html=True)
     st.markdown(_badge_html(sig), unsafe_allow_html=True)
-    st.caption(f"資料驗證：✅ 通過｜現價 NT${price:,.2f}；最近收盤 NT${last_close:,.2f}（{last_close_date}）")
+    st.caption(f"資料來源：{source_label}｜估值模式：{valuation_label}")
+    st.caption(f"現價 NT${price:,.2f}，最近收盤 NT${last_close:,.2f}（{last_close_date}）")
     st.markdown("---")
 
     # ── KPI 列 ──
     c1,c2,c3,c4,c5,c6 = st.columns(6)
     c1.metric("目前股價",        f"NT${price:,.1f}" if price else "—")
-    c2.metric("內在價值（DCF）", f"NT${iv:,.1f}"    if valuation_ready else "N/A")
+    c2.metric(valuation_label, f"NT${iv:,.1f}"    if valuation_ready else "N/A")
     c3.metric("安全邊際價",      f"NT${mos:,.1f}"   if valuation_ready else "N/A",
               "-20%" if valuation_ready else None)
     c4.metric("距內在價值",      f"{up:+.1f}%"      if up is not None else "N/A",
               delta_color="normal" if (up is not None and up<0) else "inverse")
-    c5.metric("WACC",            f"{wacc*100:.2f}%")
+    c5.metric("WACC",            wacc_display)
     c6.metric("股息殖利率",      f"{dy:.2f}%")
     if not valuation_ready:
-        st.warning("此標的目前估值資料品質不足或估值結果不可用，暫不提供買進區判斷；請改用觀察或更換標的。")
+        st.warning(f"{valuation_note} 目前暫不提供買進區判斷。")
 
     st.markdown("---")
 
-    if valuation_ready:
+    if valuation_ready and valuation_mode in ("dcf", "fcf"):
         # Keep decomposition visuals only when the valuation is usable.
         l,r = st.columns(2)
         with l:
@@ -676,6 +732,13 @@ def run_valuation(ticker, company, sector):
         else:
             e1.metric("自由現金流（替代）", f"NT${oe/1e9:.2f}B")
             st.caption("現金流量表資料不足，以自由現金流替代")
+    elif valuation_ready and valuation_mode == "eps":
+        st.info("估值模式：EPS 法。此模式使用官方 P/E 與股價反推出 TTM EPS，再以合理 P/E 計算內在價值。")
+        e1,e2,e3,e4 = st.columns(4)
+        e1.metric("TTM EPS", f"{eps_ttm:.2f}" if eps_ttm > 0 else "N/A")
+        e2.metric("合理 P/E", f"{IMFS_Config.FAIR_PE:.1f}x")
+        e3.metric("內在價值/現價", f"{iv_price_ratio:.2f}" if iv_price_ratio is not None else "N/A")
+        e4.metric("資料來源", "TWSE 官方")
     else:
         st.info("估值拆解（WACC / DCF / 業主盈餘）已隱藏，因為目前資料品質不足，避免誤導判斷。")
         if iv_price_ratio is not None:
@@ -728,7 +791,9 @@ class MarketScanner:
         for sec in sectors:
             for tkr,_,full in TAIWAN_STOCK_UNIVERSE.get(sec,[]):
                 try:
-                    i=yf.Ticker(tkr+".TW").info
+                    i=fetch_info(tkr)
+                    if not i:
+                        continue
                     _pe=float(i.get('trailingPE') or float('inf'))
                     _pb=float(i.get('priceToBook') or float('inf'))
                     _dy=_norm_div(i.get('dividendYield'))
