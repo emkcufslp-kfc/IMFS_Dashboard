@@ -11,6 +11,11 @@ import yfinance as yf
 from datetime import datetime, timedelta
 import numpy as np
 
+try:
+    import twstock
+except ImportError:
+    twstock = None
+
 from twse_data import build_twse_snapshot
 
 st.set_page_config(
@@ -375,6 +380,115 @@ def _badge_html(sig: str) -> str:
 def _sec(text: str) -> str:
     return f'<div class="sec-label">{text}</div>'
 
+def _parse_trade_date(raw: str):
+    raw = str(raw or "").strip()
+    if not raw:
+        return None
+
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if len(digits) == 7:
+        try:
+            roc_year = int(digits[:3])
+            month = int(digits[3:5])
+            day = int(digits[5:7])
+            return datetime(roc_year + 1911, month, day).date()
+        except:
+            return None
+
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except:
+            pass
+
+    if len(digits) == 8:
+        try:
+            return datetime.strptime(digits, "%Y%m%d").date()
+        except:
+            return None
+
+    return None
+
+@st.cache_data(ttl=300)
+def fetch_twstock_quote(t: str) -> dict:
+    if twstock is None:
+        return {}
+
+    code = str(t or "").strip()
+    if not code:
+        return {}
+
+    out = {}
+
+    try:
+        realtime = twstock.realtime.get(code)
+    except:
+        realtime = None
+
+    if isinstance(realtime, dict):
+        rt = realtime.get("realtime") or {}
+        info = realtime.get("info") or {}
+        prices = rt.get("latest_trade_price") or []
+        latest_price = None
+        if isinstance(prices, list):
+            for raw in reversed(prices):
+                try:
+                    if raw not in (None, "", "-"):
+                        latest_price = float(raw)
+                        break
+                except:
+                    pass
+        else:
+            try:
+                if prices not in (None, "", "-"):
+                    latest_price = float(prices)
+            except:
+                pass
+
+        if latest_price and latest_price > 0:
+            out["currentPrice"] = latest_price
+            out["regularMarketPrice"] = latest_price
+            out["_price_source"] = "twstock_realtime"
+
+        name = info.get("name")
+        if name:
+            out["longName"] = name
+            out["shortName"] = name
+
+    try:
+        stock = twstock.Stock(code)
+        today = datetime.now()
+        months = [(today.year, today.month)]
+        if today.month == 1:
+            months.append((today.year - 1, 12))
+        else:
+            months.append((today.year, today.month - 1))
+
+        for year, month in months:
+            try:
+                stock.fetch_from(year, month)
+            except:
+                pass
+
+        if getattr(stock, "price", None) and getattr(stock, "date", None):
+            valid = [
+                (d, p) for d, p in zip(stock.date, stock.price)
+                if d is not None and p not in (None, 0)
+            ]
+            if valid:
+                d, p = valid[-1]
+                out["_last_close"] = float(p)
+                out["_last_close_date"] = d.isoformat() if hasattr(d, "isoformat") else str(d)
+                out["_last_close_source"] = "twstock_history"
+                if "currentPrice" not in out:
+                    out["currentPrice"] = float(p)
+                    out["regularMarketPrice"] = float(p)
+                    out["_price_source"] = "twstock_history"
+    except:
+        pass
+
+    return out
+
 @st.cache_data(ttl=300)
 def fetch_info(t: str) -> dict:
     symbol = t + ".TW"
@@ -395,6 +509,24 @@ def fetch_info(t: str) -> dict:
         for k, v in twse.items():
             if v is not None and v != "":
                 out[k] = v
+
+    twstock_quote = fetch_twstock_quote(t)
+    if twstock_quote:
+        if "currentPrice" not in out:
+            for k in ("currentPrice", "regularMarketPrice", "_price_source"):
+                v = twstock_quote.get(k)
+                if v is not None and v != "":
+                    out[k] = v
+        if "_last_close" not in out:
+            for k in ("_last_close", "_last_close_date", "_last_close_source"):
+                v = twstock_quote.get(k)
+                if v is not None and v != "":
+                    out[k] = v
+        for k in ("longName", "shortName"):
+            if k not in out:
+                v = twstock_quote.get(k)
+                if v:
+                    out[k] = v
 
     # Fallback for environments where .info is unstable/rate-limited
     try:
@@ -551,13 +683,17 @@ def run_valuation(ticker, company, sector):
     last_close_date = str(info.get('_last_close_date') or "")
     price_gap = (abs(price-last_close)/last_close) if (price>0 and last_close>0) else None
     is_recent = False
+    date_parse_ok = False
     if last_close_date:
-        try:
-            d = datetime.strptime(last_close_date, "%Y-%m-%d").date()
-            is_recent = (datetime.now().date() - d).days <= 10
-        except:
-            is_recent = False
-    price_verified = (price > 0 and last_close > 0 and is_recent and (price_gap is not None and price_gap <= 0.30))
+        d = _parse_trade_date(last_close_date)
+        if d is not None:
+            date_parse_ok = True
+            is_recent = abs((datetime.now().date() - d).days) <= 10
+    gap_ok = (price_gap is not None and price_gap <= 0.30)
+    same_price = (price_gap is not None and price_gap <= 0.001)
+    # Allow valuation to continue when price and last close effectively match,
+    # even if the upstream date format is inconsistent.
+    price_verified = (price > 0 and last_close > 0 and gap_ok and (is_recent or same_price))
     if not price_verified:
         st.error("資料驗證未通過：最新價格與近期收盤無法一致驗證，已停止本次估值。")
         if price > 0:
@@ -566,7 +702,11 @@ def run_valuation(ticker, company, sector):
             st.caption(f"最近收盤: NT${last_close:,.2f}（{last_close_date}）")
         if price_gap is not None:
             st.caption(f"價差比: {price_gap*100:.1f}%（需 <= 30%）")
+        if last_close_date and not date_parse_ok:
+            st.caption("日期格式無法解析，因此近期性驗證未通過。")
         return
+    if price > 0 and last_close > 0 and same_price and not is_recent:
+        st.caption("價格已與最近收盤一致，已略過日期格式造成的驗證限制。")
     if not cf.empty:
         ni=_cfrow(cf,'Net Income','NetIncome')
         da=_cfrow(cf,'Depreciation And Amortization','Reconciled Depreciation','DepreciationAndAmortization')
@@ -590,13 +730,16 @@ def run_valuation(ticker, company, sector):
     tvp=(oeps*(1+g5)**5*(1+tg)/(wacc-tg))/(1+wacc)**5 if wacc>tg else 0.0
     iv=pv5+tvp; mos=iv*(1-IMFS_Config.MOS)
     iv_price_ratio = (iv / price) if price > 0 else None
-    valuation_ready = (
+    raw_valuation_available = (
         iv > 0 and
         mos > 0 and
-        iv_price_ratio is not None and
+        iv_price_ratio is not None
+    )
+    valuation_ready = (
+        raw_valuation_available and
         iv_price_ratio >= 0.2
     )
-    up=((iv-price)/price*100) if (price>0 and valuation_ready) else None
+    up=((iv-price)/price*100) if (price>0 and raw_valuation_available) else None
     valuation_mode = "dcf"
     valuation_label = "內在價值（DCF）"
     valuation_note = "使用現金流量表資料計算業主盈餘 DCF。"
@@ -614,19 +757,41 @@ def run_valuation(ticker, company, sector):
             iv = eps_ttm * IMFS_Config.FAIR_PE
             mos = iv * (1-IMFS_Config.MOS)
             iv_price_ratio = (iv / price) if price > 0 else None
-            valuation_ready = (
+            raw_valuation_available = (
                 iv > 0 and
                 mos > 0 and
-                iv_price_ratio is not None and
+                iv_price_ratio is not None
+            )
+            valuation_ready = (
+                raw_valuation_available and
                 iv_price_ratio >= 0.2
             )
-            up = ((iv-price)/price*100) if (price>0 and valuation_ready) else None
+            up = ((iv-price)/price*100) if (price>0 and raw_valuation_available) else None
             wacc_display = "N/A"
         else:
             valuation_mode = "unavailable"
             valuation_label = "內在價值"
             valuation_note = "缺少現金流與 EPS，無法完成估值。"
+            raw_valuation_available = False
             wacc_display = "N/A"
+    elif (not valuation_ready) and eps_ttm > 0:
+        valuation_mode = "eps"
+        valuation_label = "內在價值（EPS 法）"
+        valuation_note = "現金流估值結果品質不足，改用官方 EPS × 合理 P/E 估值。"
+        iv = eps_ttm * IMFS_Config.FAIR_PE
+        mos = iv * (1-IMFS_Config.MOS)
+        iv_price_ratio = (iv / price) if price > 0 else None
+        raw_valuation_available = (
+            iv > 0 and
+            mos > 0 and
+            iv_price_ratio is not None
+        )
+        valuation_ready = (
+            raw_valuation_available and
+            iv_price_ratio >= 0.2
+        )
+        up = ((iv-price)/price*100) if (price>0 and raw_valuation_available) else None
+        wacc_display = "N/A"
 
     sig=("買進 — 低於安全邊際價" if price>0 and price<=mos else
          "持有 — 低於內在價值"   if price>0 and price<=iv  else
@@ -683,15 +848,17 @@ def run_valuation(ticker, company, sector):
     # ── KPI 列 ──
     c1,c2,c3,c4,c5,c6 = st.columns(6)
     c1.metric("目前股價",        f"NT${price:,.1f}" if price else "—")
-    c2.metric(valuation_label, f"NT${iv:,.1f}"    if valuation_ready else "N/A")
-    c3.metric("安全邊際價",      f"NT${mos:,.1f}"   if valuation_ready else "N/A",
-              "-20%" if valuation_ready else None)
+    c2.metric(valuation_label, f"NT${iv:,.1f}"    if raw_valuation_available else "N/A")
+    c3.metric("安全邊際價",      f"NT${mos:,.1f}"   if raw_valuation_available else "N/A",
+              "-20%" if raw_valuation_available else None)
     c4.metric("距內在價值",      f"{up:+.1f}%"      if up is not None else "N/A",
               delta_color="normal" if (up is not None and up<0) else "inverse")
     c5.metric("WACC",            wacc_display)
     c6.metric("股息殖利率",      f"{dy:.2f}%")
     if not valuation_ready:
         st.warning(f"{valuation_note} 目前暫不提供買進區判斷。")
+        if raw_valuation_available and iv_price_ratio is not None:
+            st.caption(f"估值品質提醒：內在價值/現價 = {iv_price_ratio:.2f}，尚未達可用門檻 0.20。")
 
     st.markdown("---")
 
